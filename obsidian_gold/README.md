@@ -1,84 +1,64 @@
 # OBSIDIAN Gold
 
-A private XAU/USD desk. It reads gold candles, shows the trend, and tells you
-when an entry qualifies. Each signal comes with its stop loss, two take
-profits, your lot size, the odds from 2,000 replays of the next 4 hours, and
-how the same setup did on past prices. New signals, targets, stops and
-session opens are sent to Telegram, and the open page also shows a browser
-notification.
+A private one-page XAU/USD desk built from two repos. It has no strategy of
+its own:
 
-The look matches the earlier OBSIDIAN app. The strategy is new: "Gold Pulse".
-The **Rules** page in the app explains it in full.
+| From | What it does here |
+| --- | --- |
+| **day-trader-skill** `trader-entry` | Opening-range breakout. The first 15 minutes after 9:30 ET set the range; a 5-minute close above it is a buy, below it a sell. |
+| **day-trader-skill** `trader-exit` | Stop at the range midpoint (or the far side), target at 1R. |
+| **day-trader-skill** `trader-timemachine` | 10,000 replays of the rest of the session, plus the same rule on every past session in the data. |
+| **day-trader-skill** `trader-budget` | Size from your max loss per trade, in ounces, shown as lots (1 lot = 100 oz). |
+| **day-trader-skill** `trader-alerts` | Stop, target and flat-by-close alerts. |
+| **Kronos** (this repo) | Forecast of the next hour of 5-minute candles. |
 
-It does analysis only. It never connects to a broker and never places a trade.
+New events go to Telegram (range set, entry, stop, target, flat by close).
+It never connects to a broker and never places a trade.
+
+The day-trader tools are written for long trades only. Sells run as buys on a
+mirror image of the chart (price p becomes M − p), and every number is
+mirrored back. The tests check that a mirrored chart gives exactly the
+mirrored trade.
 
 ## Run it
 
-You need Python 3.8 or newer. Nothing to install.
+Clone both repos side by side:
 
 ```bash
+git clone -b claude/analyze-two-repos-nfmvcr https://github.com/MinnPhyoe/Kronos.git
+git clone https://github.com/MinnPhyoe/day-trader-skill.git
 cd Kronos
-python3 obsidian_gold/server.py            # open http://127.0.0.1:8750
-python3 obsidian_gold/server.py --demo     # made-up candles, to look around offline
+python3 obsidian_gold/server.py           # http://127.0.0.1:8750
 ```
 
-### Reach it from your phone
+The page and the day-trader tools need only Python 3.8+. The Kronos forecast
+needs `pip install -r requirements.txt` (torch); the first run downloads
+`NeoQuasar/Kronos-small`. Without it, the page works and the Kronos card says
+it is off.
 
-Run it on an always-on computer or a small VPS, protected by a PIN:
+If day-trader-skill is somewhere else, set `DAY_TRADER_PATH=/path/to/day-trader-skill`.
 
-```bash
-OBSIDIAN_PIN=482913 python3 obsidian_gold/server.py --host 0.0.0.0
-```
+- **Look around offline:**
+  `python3 obsidian_gold/server.py --demo-at "2026-11-04 17:40"` uses
+  made-up candles and pretends it is that time (UTC).
+- **Open it from your phone:** run it on an always-on machine with a PIN:
+  `OBSIDIAN_PIN=482913 python3 obsidian_gold/server.py --host 0.0.0.0`.
+  Put HTTPS in front if it faces the internet, or use Tailscale.
+- **Turn on Telegram:**
+  1. Create a bot with @BotFather and copy its token.
+  2. Send your bot any message.
+  3. Get your chat id from @userinfobot.
+  4. Paste the token and chat id in Settings, then press "Send a test".
 
-The server refuses to listen beyond this computer unless a PIN is set. For
-anything on the public internet, put it behind HTTPS too, for example with
-Caddy or a Cloudflare Tunnel. On a home network, Tailscale also works.
+## Data
 
-### Notifications on your phone (Telegram)
+The page reads Yahoo 5-minute bars, 60 days of them, through trader-entry's
+own fetcher. Choose the source in Settings:
 
-1. In Telegram, open **@BotFather**, send `/newbot`, and copy the token.
-2. Send your new bot any message.
-3. Get your chat id from **@userinfobot**.
-4. In the app, open **Settings → Notifications**, paste both, save, then press
-   **Alerts → Send a test**.
+- `GC=F` (COMEX gold futures, the default) trades a few dollars above spot.
+- `XAUUSD=X` is spot.
 
-The server sends alerts while it is running, even with the page closed.
-
-## Price data
-
-| Source | What | Notes |
-| --- | --- | --- |
-| `yahoo` (default) | `GC=F` COMEX gold futures, or `XAUUSD=X` spot | Free and unofficial; can lag a little. Futures trade a few dollars above spot. |
-| `binance` | `PAXGUSDT`, a token backed by one ounce of gold | 24/7, tracks spot closely but not exactly. |
-| `csv` | Your MT4/MT5 or TradingView export | Use M1, M5 or M15. Set "Broker time vs UTC" (often +2 or +3). |
-| `demo` | Made-up candles | For trying the app only. |
-
-For entries that match your broker exactly, upload your broker's own XAUUSD
-M5 export (in MT5: View → Symbols → Bars → Export).
-
-## Gold Pulse, in short
-
-1. **Trend:** H1 EMA50 against EMA200, and the H4 close against its EMA50.
-   Both up means buys only, both down means sells only. If they disagree,
-   there are no trades.
-2. **When:** London 07:00–11:00 UTC and New York 12:00–16:00 UTC. You can
-   change both windows in Settings.
-3. **Entry on M15:**
-   - **Pullback:** the candle dips to the EMA20 and closes back in the trend
-     direction with a rejection.
-   - **Breakout:** the candle closes beyond the last 20 candles' range, with
-     a body of at least 0.6 ATR.
-4. **Stop:** beyond the swing plus 0.3 ATR, kept between 0.8 and 3 ATR.
-   **Targets:** TP1 at 1R (then move the stop to entry) and TP2 at 2R. A
-   trade still open after 8 hours is closed.
-5. **Size:** lots = balance × risk % ÷ (stop distance × 100 oz).
-
-**Forecast:** 2,000 replays of the next 16 M15 candles. Each candle is drawn
-from gold's real candles at the same time of day over the last 60 days.
-
-**Kronos (optional):** a second opinion from the Kronos model in this repo.
-Run `pip install -r requirements.txt` first; the first run downloads
-`NeoQuasar/Kronos-small`.
+Check the levels against your broker before you act.
 
 ## Tests
 
@@ -86,23 +66,21 @@ Run `pip install -r requirements.txt` first; the first run downloads
 python3 -m unittest discover -s obsidian_gold/tests -v
 ```
 
-## Files
+The tests run the day-trader README's TSLA trade through this app and get the
+same numbers:
 
-```
-obsidian_gold/
-  server.py       web server, price polling, alerts, Telegram, optional Kronos
-  engine.py       indicators, the Gold Pulse rules, backtest, forecast, lot sizing
-  feeds.py        Yahoo, Binance, CSV (MT4/MT5/TradingView) and demo candles
-  static/index.html  the app (one file, no build step)
-  data/           your settings, alerts and candle cache (not committed)
-  tests/          offline tests
-```
+- entry 364.18, stop 358.32, target 370.04
+- size: 8 (shares in the README, 0.08 lots here)
+- history: 33 breakouts in 59 sessions, 13 to the target, 15 to the stop
+
+The Time Machine percentages differ a little from the README's, because this
+page stops the replays at the 15:55 flat-by time and the README replays to
+the 16:00 close.
 
 ## Fine print
 
-**Not financial advice.** This is arithmetic on past prices. The win rates it
-shows come from the candles it has loaded. They include no spread or
-commission, and they don't promise future results. News such as CPI, NFP and
-FOMC moves gold more than any pattern: stand aside around it. A stop can fill
-worse than its price in a fast market. Paper trade it for a few weeks before
-you trust it with money.
+**Not financial advice.** This is arithmetic on past prices. The rule was
+written for US stocks at the 9:30 ET open; gold also moves hard on 8:30 ET
+data, in London, and overnight, and none of that is in this rule. The odds
+and history include no spread or commission. A stop can fill worse than its
+price. Paper trade it for a few weeks first.
