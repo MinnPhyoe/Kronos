@@ -16,6 +16,9 @@ def make_provider(cfg: Config) -> Provider:
             start = demo_start()
         return SimulatedProvider(cfg.pairs, speed=cfg.sim_speed, start=start,
                                  history_days=cfg.sim_history_days, seed=cfg.sim_seed)
+    if p == "yahoo":
+        from .yahoo import YahooProvider
+        return YahooProvider(cfg.poll_seconds)
     if p == "oanda":
         from .oanda import OandaProvider
         return OandaProvider(cfg.oanda_token, cfg.oanda_account, cfg.oanda_env, cfg.price_basis)
@@ -25,7 +28,7 @@ def make_provider(cfg: Config) -> Provider:
     if p == "tradermade":
         from .tradermade import TraderMadeProvider
         return TraderMadeProvider(cfg.tradermade_key)
-    raise ProviderError("unknown FOREX_PROVIDER %r (simulated, oanda, eodhd, tradermade)" % p)
+    raise ProviderError("unknown FOREX_PROVIDER %r (yahoo, oanda, eodhd, tradermade, simulated)" % p)
 
 
 __all__ = ["Provider", "ProviderError", "make_provider"]

@@ -156,8 +156,12 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
         now = at or health.market_time() or (store.last_candle_time(p, "1m") or time.time())
         out = []
         cs = store.get_candles(p, "5m", limit=400, end=int(now) + 1)
-        for day_offset in (0, -86400):
+        seen = set()
+        for day_offset in (-86400, 0, 86400, 2 * 86400, 3 * 86400):      # yesterday to the next trading day after a weekend
             for w in windows_for(p, now + day_offset, st.sessions, cfg.setup_expiry_minutes):
+                if (w.session, w.day) in seen:
+                    continue
+                seen.add((w.session, w.day))
                 rng = opening_range(cs, p, w) if now >= w.range_end else None
                 d = w.to_dict()
                 d["range"] = rng.to_dict() if rng else None
@@ -248,6 +252,14 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
         await bus.publish("status", {"type": "status", "service": "settings", "ok": True, "ts": time.time()})
         return st.to_dict()
 
+    @app.get("/auth")
+    def auth_info():
+        return {"login_required": cfg.auth_mode != "none", "mode": cfg.auth_mode}
+
+    @app.get("/auth/check")
+    def auth_check(uid: str = Depends(user)):
+        return {"ok": True}
+
     @app.get("/health")
     def health_ep():
         now = health.market_time()
@@ -268,7 +280,7 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
     @app.websocket("/stream")
     async def stream(ws: WebSocket):
         try:
-            ws_user(cfg, ws)
+            ws_user(cfg, ws, getattr(user, "lockout", None))
         except PermissionError as e:
             await ws.close(code=4401, reason=str(e))
             return

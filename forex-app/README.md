@@ -16,6 +16,56 @@ ported here to forex).
 
 *Screenshots from the demo: a simulated market and a statistical stand-in model, not Kronos.*
 
+## Use it with live prices, privately, on your own computer
+
+The app runs on your computer and only you can open it. Prices stream live
+while it runs: Yahoo Finance (free, no account) or your OANDA practice
+account (free, real broker prices).
+
+1. **Download** the app:
+   [Download ZIP](https://github.com/MinnPhyoe/Kronos/archive/refs/heads/claude/sweet-hypatia-7v3qxy.zip),
+   unzip it, and open the `forex-app` folder inside.
+2. **Install Python 3.10 or newer** from [python.org](https://www.python.org/downloads/).
+   On Windows, tick **"Add python.exe to PATH"** in the installer.
+3. **Start it.** On Windows, double-click `start.bat`. On Mac or Linux, open
+   a terminal in `forex-app` and run:
+   ```bash
+   ./start.sh
+   ```
+   The first time, it installs what it needs and asks four questions: where
+   prices come from, which pairs, a password, and whether to install the
+   Kronos AI model (about 1 GB). Then your browser opens the app. The first
+   start loads about 30 days of history, which takes a minute or two.
+4. **Next time**, just start it again the same way. Signals only appear
+   while it is running, so keep the computer awake during the sessions you
+   trade (London 08:00, New York 08:00).
+
+**Privacy**
+
+* With no password, only this computer can open the app.
+* With a password, the app asks for it on every new device, and it also
+  works from your phone on the same Wi-Fi: open the address printed when it
+  starts. After 10 wrong passwords, that device waits 10 minutes.
+* To reach it from your phone anywhere, without opening it to the internet,
+  install the free [Tailscale](https://tailscale.com/download) app on the
+  computer and the phone, sign both into the same account, and open
+  `http://<your-computer-name>:8000`.
+* Your settings, keys and password stay in `forex-app/.env` on your
+  computer. That file is never uploaded.
+
+**Good to know**
+
+* Yahoo prices are free and unofficial. They can lag a few seconds, and
+  Yahoo can slow down very frequent requests. Yahoo has no spot gold, so
+  XAUUSD shows COMEX gold futures, a few dollars away from spot. For real
+  bid/ask prices and spot gold, choose OANDA in setup.
+* On a normal computer without a GPU, a Kronos forecast takes from a few
+  seconds to about a minute. If your computer struggles, add
+  `FOREX_CHART_FORECASTS=false` to `.env`. Signals still get their forecast,
+  but the chart band only updates when there is a setup.
+* To change your answers, run `python -m forexapp.setup` (inside the
+  `.venv`), or edit `.env`.
+
 ## Try it in two minutes (no keys, no GPU)
 
 ```bash
@@ -87,6 +137,7 @@ all use the same candles. Set `FOREX_PROVIDER` and its key in `.env`:
 
 | provider | live | history | key |
 | --- | --- | --- | --- |
+| `yahoo` | 1m chart read every 5 s (free, unofficial, can lag) | last ~30 days of 1m | none |
 | `oanda` | streaming API (real broker prices) | M1 bid/ask candles from the same account | `OANDA_TOKEN`, `OANDA_ACCOUNT` |
 | `eodhd` | WebSocket | intraday 1m (no spread: the pair's typical spread is used) | `EODHD_API_KEY` |
 | `tradermade` | WebSocket | minute time series | `TRADERMADE_API_KEY` |
@@ -286,14 +337,17 @@ still an open question in the guide.
 * Tested: the candle builder and aggregation, sessions across DST, the
   scanner, exits, sizing, risk, Time Machine, the signal engine, the strategy
   service end to end (range to waiting to triggered to TP1), the backtest (no
-  look-ahead, next-open fills, walk-forward), the API, auth and the WebSocket
-  (59 tests). The full demo also ran in a browser.
+  look-ahead, next-open fills, walk-forward), the API, the password login and
+  lockout, and the Yahoo feed path (66 tests). The full demo also ran in a
+  browser, and so did a password-protected run with live Yahoo-format prices.
 * The Kronos wrapper was tested with a fake predictor. Downloading the weights
   needs network access to Hugging Face and `torch`, which this build
   environment didn't have. Run `python -m forexapp.models.evaluate` once on
   your machine before trusting it.
-* The OANDA, EODHD and TraderMade clients follow their public docs but were not
-  run against live endpoints (no keys here). Start with
+* Yahoo, OANDA, EODHD and TraderMade were not reachable from the build
+  environment. The Yahoo client was tested against Yahoo's published answer
+  format; the others follow their public docs. The first real start shows
+  whether prices arrive. Start with
   `validate compare` against your broker.
 * The economic calendar default is a free, unofficial ForexFactory-format feed
   that can change. A local file (`FOREX_CALENDAR_FILE`) works too.

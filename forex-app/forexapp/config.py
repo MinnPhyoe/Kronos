@@ -22,6 +22,24 @@ TIMEFRAMES = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
 HIGHER_TIMEFRAMES = ("5m", "15m", "1h")
 
 
+def load_dotenv(path) -> None:
+    """Read KEY=value lines from a .env file into the environment (values already set win)."""
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+            v = v[1:-1]
+        if k and k not in os.environ:
+            os.environ[k] = v
+
+
 def norm_tf(tf: str) -> str:
     """Accept '1H', '5M', '60m' and return the canonical key ('1h', '5m')."""
     t = (tf or "").strip().lower()
@@ -65,7 +83,7 @@ class Config:
     db_url: str = "sqlite:///" + str(APP_DIR / "data" / "forex.db")
     redis_url: str | None = None
 
-    # data provider: simulated | oanda | eodhd | tradermade
+    # data provider: yahoo (free, no key) | oanda | eodhd | tradermade | simulated
     provider: str = "simulated"
     pairs: list = field(default_factory=lambda: ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD"])
     price_basis: str = "bid"                 # candles are built from bid prices; the spread is stored separately
@@ -74,7 +92,8 @@ class Config:
     oanda_env: str = "practice"              # practice | live
     eodhd_key: str | None = None
     tradermade_key: str | None = None
-    backfill_days: int = 3                   # on (re)connect, backfill at most this many days of 1m candles
+    backfill_days: int = 30                  # on first start / reconnect, backfill at most this many days of 1m candles
+    poll_seconds: float = 5.0                # yahoo: how often to read the latest prices
 
     # simulated provider (demo / development)
     sim_speed: float = 1.0                   # 60 = one market minute per real second
@@ -129,12 +148,13 @@ class Config:
     explain: bool = False
     explain_model: str = "claude-opus-5-5"
 
-    # API
+    # API. A password (FOREX_PASSWORD) turns on the login; without one the app only listens on this computer.
+    password: str | None = None
     auth_mode: str = "none"                  # none | token | supabase
     api_token: str | None = None
     supabase_jwt_secret: str | None = None
     cors_origins: list = field(default_factory=lambda: ["*"])
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8000
 
     # alerts
@@ -145,6 +165,7 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
+        load_dotenv(APP_DIR / ".env")
         c = cls()
         c.db_url = _env("FOREX_DB_URL", c.db_url)
         c.redis_url = _env("FOREX_REDIS_URL", _env("REDIS_URL"))
@@ -157,6 +178,7 @@ class Config:
         c.eodhd_key = _env("EODHD_API_KEY")
         c.tradermade_key = _env("TRADERMADE_API_KEY")
         c.backfill_days = _env_int("FOREX_BACKFILL_DAYS", c.backfill_days)
+        c.poll_seconds = _env_float("FOREX_POLL_SECONDS", c.poll_seconds)
         c.sim_speed = _env_float("FOREX_SIM_SPEED", c.sim_speed)
         c.sim_start = _env("FOREX_SIM_START", c.sim_start)
         c.sim_history_days = _env_int("FOREX_SIM_HISTORY_DAYS", c.sim_history_days)
@@ -200,11 +222,15 @@ class Config:
         c.explain_model = _env("FOREX_EXPLAIN_MODEL", c.explain_model)
         c.auth_mode = _env("FOREX_AUTH_MODE", c.auth_mode).lower()
         c.api_token = _env("FOREX_API_TOKEN")
+        c.password = _env("FOREX_PASSWORD")
+        if c.password and c.auth_mode == "none":
+            c.auth_mode, c.api_token = "token", c.password
         c.supabase_jwt_secret = _env("SUPABASE_JWT_SECRET")
         origins = _env("FOREX_CORS_ORIGINS")
         if origins:
             c.cors_origins = [o.strip() for o in origins.split(",") if o.strip()]
-        c.host = _env("FOREX_HOST", c.host)
+        # with a login the app may listen on the network (phone on the same Wi-Fi, Tailscale); without one, only here
+        c.host = _env("FOREX_HOST", "0.0.0.0" if c.auth_mode != "none" else "127.0.0.1")
         c.port = _env_int("FOREX_PORT", c.port)
         c.alert_webhook_url = _env("FOREX_ALERT_WEBHOOK")
         c.ntfy_topic = _env("FOREX_NTFY_TOPIC")
@@ -215,7 +241,7 @@ class Config:
     def public(self) -> dict:
         """The non-secret part, for /health and logs."""
         d = dataclasses.asdict(self)
-        for k in ("oanda_token", "oanda_account", "eodhd_key", "tradermade_key", "api_token",
+        for k in ("oanda_token", "oanda_account", "eodhd_key", "tradermade_key", "api_token", "password",
                   "supabase_jwt_secret", "alert_webhook_url", "db_url", "redis_url", "ntfy_topic"):
             d[k] = bool(d[k])
         return d

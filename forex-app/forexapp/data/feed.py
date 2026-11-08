@@ -119,10 +119,17 @@ class FeedService:
                     self.connected = True
                     await self.bus.publish("status", {"type": "status", "service": "feed", "ok": True,
                                                       "event": "connected", "ts": time.time()})
-                    async for tick in self.provider.stream(self.pairs):
+                    async for item in self.provider.stream(self.pairs):
                         backoff = 1.0
-                        for c in self.builder.on_tick(tick):
-                            await self._closed(c)
+                        if isinstance(item, Candle):
+                            # a provider that serves finished 1-minute candles itself (Yahoo)
+                            if item.open_time > self.last_candle_time.get(item.pair, -1):
+                                await self._closed(item)
+                            continue
+                        tick = item
+                        if not getattr(self.provider, "bars", False):
+                            for c in self.builder.on_tick(tick):
+                                await self._closed(c)
                         self.last_tick[tick.pair] = tick
                         now = time.monotonic()
                         if now - self.last_tick_sent.get(tick.pair, 0) >= TICK_INTERVAL:

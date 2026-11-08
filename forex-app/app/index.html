@@ -85,6 +85,17 @@
       <button data-view="settings" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Settings</span></button>
     </nav>
     <div id="toasts" aria-live="assertive"></div>
+    <div id="login" class="login" hidden>
+      <form id="login-form" class="login-card" autocomplete="on">
+        <h1 class="view-title" style="margin-top:0">FX Signals</h1>
+        <p class="muted small">This app is private. Enter the password you set when you installed it.</p>
+        <input type="text" name="username" value="fx" autocomplete="username" hidden>
+        <label class="sr" for="login-pass">Password</label>
+        <input id="login-pass" type="password" autocomplete="current-password" placeholder="Password" required>
+        <button class="btn primary" type="submit">Open</button>
+        <p class="small" id="login-msg" role="alert"></p>
+      </form>
+    </div>
   </div>
 
   <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>

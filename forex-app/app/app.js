@@ -26,6 +26,7 @@ async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
   if (token) headers.Authorization = "Bearer " + token;
   const r = await fetch(path, { ...opts, headers });
+  if (r.status === 401) { showLogin(token ? "Wrong or old password." : ""); throw new Error("401: login needed"); }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch (e) {}
@@ -171,8 +172,8 @@ function nextSessionText() {
   const upcoming = (S.sessions || []).filter((s) => s.range_start > now).sort((a, b) => a.range_start - b.range_start)[0];
   const forming = (S.sessions || []).find((s) => s.range_start <= now && now < s.range_end);
   if (forming) return `The ${esc(forming.label.replace(" ORB", ""))} opening range is forming until ${timeOf(forming.range_end_iso)}.`;
-  if (upcoming) return `Next: ${esc(upcoming.label.replace(" ORB", ""))} range ${timeOf(upcoming.range_start_iso)}–${timeOf(upcoming.range_end_iso)} (${inMinutes(upcoming.range_start)}).`;
-  return "No session range left today.";
+  if (upcoming) return `Next: ${esc(upcoming.label.replace(" ORB", ""))} range ${dayTime(upcoming.range_start_iso)}–${timeOf(upcoming.range_end_iso)} (${inMinutes(upcoming.range_start)}).`;
+  return "No session range coming up. Check your sessions in Settings.";
 }
 
 function renderSignalSlot() {
@@ -287,11 +288,13 @@ function renderBanners() {
   const h = S.health;
   const out = [];
   if (h) {
+    if (!h.feed_up) out.push(["crit", `<b>No live prices right now.</b> The app can't reach ${esc((h.config && h.config.provider) || "the price source")}. Check your internet; it keeps retrying.`]);
     if (!h.model_up) out.push(["crit", "<b>Signals unavailable.</b> The forecast model is offline; candles keep streaming."]);
     if (h.data_delayed && h.data_delayed[S.pair]) out.push(["warn", `<b>Data delayed.</b> No new ${esc(S.pair)} candle for over 3 minutes.`]);
     const demoModel = h.config && h.config.model_backend === "bootstrap";
     const sim = h.config && h.config.provider === "simulated";
     if (sim || demoModel) out.push(["warn", `<b>Demo.</b> ${sim ? "Simulated prices, not real quotes. " : ""}${demoModel ? "Forecasts from a statistical stand-in, not Kronos." : ""}`]);
+    if (h.config && h.config.provider === "yahoo" && S.pair === "XAUUSD") out.push(["warn", "<b>Gold from Yahoo</b> is COMEX futures, a few dollars away from spot XAUUSD. Use OANDA for spot gold."]);
   }
   if (S.forecast && S.forecast.stale) out.push(["warn", "The forecast is older than the last candle."]);
   $("#banners").innerHTML = out.map(([k, m]) => `<div class="banner ${k}">${ICON_WARN}<span>${m}</span></div>`).join("");
@@ -334,7 +337,8 @@ function connect() {
   const ws = new WebSocket(`${proto}://${location.host}/stream${token ? "?token=" + encodeURIComponent(token) : ""}`);
   S.ws = ws;
   ws.onopen = () => { S.wsDelay = 1000; setStatus("live", "Live"); };
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
+    if (ev.code === 4401) { setStatus("down", "Locked"); showLogin("Please log in again."); return; }
     setStatus("down", "Reconnecting");
     setTimeout(connect, S.wsDelay);
     S.wsDelay = Math.min(30000, S.wsDelay * 2);
@@ -398,6 +402,27 @@ function onAlert(m) {
     try { new Notification(m.title, { body: m.body, tag: m.key, icon: "/static/icon.svg" }); } catch (e) {}
   }
 }
+
+// ---------------------------------------------------------------- login (only when the server has a password)
+let loginShown = false;
+function showLogin(msg) {
+  if (loginShown) { if (msg) $("#login-msg").textContent = msg; return; }
+  loginShown = true;
+  $("#login").hidden = false;
+  $("#login-msg").textContent = msg || "";
+  setTimeout(() => $("#login-pass").focus(), 50);
+}
+$("#login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const pass = $("#login-pass").value;
+  try {
+    const r = await fetch("/auth/check", { headers: { Authorization: "Bearer " + pass } });
+    if (r.status === 429) { $("#login-msg").textContent = "Too many wrong tries. Wait 10 minutes."; return; }
+    if (!r.ok) { $("#login-msg").textContent = "That password is not right."; return; }
+    store.set("token", pass);
+    location.reload();
+  } catch (err) { $("#login-msg").textContent = "Can't reach the app. Is it still running?"; }
+});
 
 // ---------------------------------------------------------------- navigation and wiring
 function show(view) {
@@ -490,6 +515,10 @@ function wire() {
 async function init() {
   wire();
   renderTf();
+  try {
+    const a = await (await fetch("/auth")).json();
+    if (a.login_required && !store.get("token", "")) { showLogin(); return; }
+  } catch (e) {}
   try {
     await loadPairs();
     S.settings = await api("/settings");

@@ -100,22 +100,49 @@ async def run_strategy(cfg, store, bus):
     await asyncio.gather(svc.run(), beat(), monitor())
 
 
-async def run_api(cfg, store, bus):
+def _lan_ip() -> str | None:
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return None
+
+
+async def run_api(cfg, store, bus, open_browser=False):
     import uvicorn
     from .api.server import create_app
     app = create_app(cfg, store, bus)
-    server = uvicorn.Server(uvicorn.Config(app, host=cfg.host, port=cfg.port, log_level="info"))
+    server = uvicorn.Server(uvicorn.Config(app, host=cfg.host, port=cfg.port, log_level="warning"))
+    local = "http://localhost:%d" % cfg.port
+    lines = ["", "  FX app is running:  %s" % local]
+    if cfg.host in ("0.0.0.0", "::"):
+        ip = _lan_ip()
+        if ip:
+            lines.append("  From your phone (same Wi-Fi or Tailscale):  http://%s:%d" % (ip, cfg.port))
+        lines.append("  Login: the password you set (FOREX_PASSWORD).")
+    else:
+        lines.append("  Private: only this computer can open it. Set a password in .env to use it from your phone.")
+    lines += ["  Prices: %s.  Stop with Ctrl+C." % cfg.provider, ""]
+    print("\n".join(lines), flush=True)
+    if open_browser:
+        import webbrowser
+        asyncio.get_running_loop().call_later(2.0, lambda: webbrowser.open(local))
     await server.serve()
 
 
-async def main_async(which: str, cfg: Config):
+async def main_async(which: str, cfg: Config, open_browser: bool = False):
     store = Store(cfg.db_url)
     if store.get_settings() is None:
         store.put_settings(UserSettings(pairs=list(cfg.pairs), sessions=list(cfg.sessions)).to_dict())
     bus = make_bus(cfg.redis_url)
     if which != "all" and cfg.redis_url is None:
         log.warning("running '%s' alone without FOREX_REDIS_URL: it cannot talk to the other services", which)
-    runners = {"feed": run_feed, "model": run_model, "strategy": run_strategy, "api": run_api}
+    runners = {"feed": run_feed, "model": run_model, "strategy": run_strategy,
+               "api": lambda c, s, b: run_api(c, s, b, open_browser)}
     names = list(runners) if which == "all" else [which]
     # the API and the strategy subscribe before the feed starts publishing
     order = sorted(names, key=lambda n: {"api": 0, "strategy": 1, "model": 2, "feed": 3}[n])
@@ -137,6 +164,7 @@ def main(argv=None):
     ap.add_argument("service", choices=["all", "feed", "model", "strategy", "api"])
     ap.add_argument("--demo", action="store_true", help="simulated market on a fast clock (no keys, no GPU)")
     ap.add_argument("--port", type=int)
+    ap.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
     ap.add_argument("--log", default="INFO")
     a = ap.parse_args(argv)
     logging.basicConfig(level=a.log.upper(), format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -150,7 +178,7 @@ def main(argv=None):
     if a.port:
         cfg.port = a.port
     try:
-        asyncio.run(main_async(a.service, cfg))
+        asyncio.run(main_async(a.service, cfg, a.open))
     except KeyboardInterrupt:
         pass
 
