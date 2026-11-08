@@ -32,9 +32,11 @@ account (free, real broker prices).
    ```bash
    ./start.sh
    ```
-   The first time, it installs what it needs and asks four questions: where
-   prices come from, which pairs, a password, and whether to install the
-   Kronos AI model (about 1 GB). Then your browser opens the app. The first
+   The first time, it installs what it needs and asks a few questions: where
+   prices come from, which pairs, a password, whether to install the Kronos
+   AI model (about 1 GB), and, if you like, a topic name for phone alerts
+   through the free [ntfy](https://ntfy.sh) app, which arrive even when the
+   app isn't open. Then your browser opens the app. The first
    start loads about 30 days of history, which takes a minute or two.
 4. **Next time**, just start it again the same way. Signals only appear
    while it is running, so keep the computer awake during the sessions you
@@ -338,12 +340,15 @@ still an open question in the guide.
   scanner, exits, sizing, risk, Time Machine, the signal engine, the strategy
   service end to end (range to waiting to triggered to TP1), the backtest (no
   look-ahead, next-open fills, walk-forward), the API, the password login and
-  lockout, and the Yahoo feed path (66 tests). The full demo also ran in a
-  browser, and so did a password-protected run with live Yahoo-format prices.
-* The Kronos wrapper was tested with a fake predictor. Downloading the weights
-  needs network access to Hugging Face and `torch`, which this build
-  environment didn't have. Run `python -m forexapp.models.evaluate` once on
-  your machine before trusting it.
+  lockout, the Yahoo feed path and the real Kronos code (67 tests). The full
+  demo also ran in a browser, and so did a password-protected run with live
+  Yahoo-format prices, and a run with Kronos as the forecast model.
+* Kronos: the wrapper ran on the real Kronos code (an untrained model saved
+  and loaded like a fine-tuned checkpoint), so loading, batching and
+  timestamps are checked. The trained weights come from Hugging Face, which
+  the build environment couldn't reach, so forecast quality and speed with
+  Kronos-small are untested. Run `python -m forexapp.models.evaluate` once
+  on your machine before trusting it.
 * Yahoo, OANDA, EODHD and TraderMade were not reachable from the build
   environment. The Yahoo client was tested against Yahoo's published answer
   format; the others follow their public docs. The first real start shows

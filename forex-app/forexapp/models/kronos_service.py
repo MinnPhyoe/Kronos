@@ -33,6 +33,15 @@ class KronosUnavailable(RuntimeError):
     pass
 
 
+def model_name(cfg: Config) -> str:
+    """'Kronos-small' for a Hugging Face model; 'Kronos fine-tuned (<experiment>)' for a local checkpoint,
+    whose path ends .../<experiment>/basemodel/best_model when it comes from finetune_csv."""
+    if not cfg.kronos_checkpoint:
+        return cfg.kronos_model.split("/")[-1]
+    parts = [p for p in Path(cfg.kronos_checkpoint).parts if p not in ("best_model", "basemodel", "checkpoints")]
+    return "Kronos fine-tuned (%s)" % (parts[-1] if parts else "local")
+
+
 def _auto_device():
     import torch
     if torch.cuda.is_available():
@@ -48,8 +57,7 @@ class KronosForecaster:
         self.predictor = None
         self.lock = threading.Lock()
         self.load_error: str | None = None
-        ckpt = cfg.kronos_checkpoint
-        self.name = "Kronos (%s)" % (Path(ckpt).name if ckpt else cfg.kronos_model.split("/")[-1])
+        self.name = model_name(cfg)
 
     def ready(self) -> bool:
         return self.predictor is not None

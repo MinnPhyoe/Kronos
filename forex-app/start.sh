@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the FX app on this computer (Mac or Linux). First run: installs what it needs and asks four questions.
+# Start the FX app on this computer (Mac or Linux). First run: installs what it needs and asks a few questions.
 set -euo pipefail
 cd "$(dirname "$0")"
 PY="${PYTHON:-python3}"

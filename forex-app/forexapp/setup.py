@@ -1,4 +1,4 @@
-"""First-time setup: four questions, then a private .env file next to the app.
+"""First-time setup: a few questions, then a private .env file next to the app.
 
     python -m forexapp.setup
 
@@ -6,6 +6,7 @@
 2. Which pairs.
 3. A password (or none: then only this computer can open the app).
 4. Whether to install the Kronos AI model (about 1 GB; runs on a normal CPU, faster with a GPU).
+5. Optionally, phone alerts through the free ntfy app, even when the app isn't open.
 
 The .env file stays on this computer. It is in .gitignore, so it is never uploaded.
 """
@@ -56,10 +57,12 @@ def install_kronos() -> bool:
     else:                                   # macOS: the normal wheel includes Apple-chip acceleration
         torch = pip + ["torch"]
     extras = pip + ["einops==0.8.1", "huggingface_hub==0.33.1", "safetensors==0.6.2", "tqdm"]
-    for cmd in (torch, extras):
-        if subprocess.call(cmd) != 0:
-            print("Installing failed. The app will start with the simple stand-in model; run setup again to retry.")
-            return False
+    if subprocess.call(torch) != 0 and subprocess.call(pip + ["torch"]) != 0:   # CPU index blocked: the standard one
+        print("Installing failed. The app will start with the simple stand-in model; run setup again to retry.")
+        return False
+    if subprocess.call(extras) != 0:
+        print("Installing failed. The app will start with the simple stand-in model; run setup again to retry.")
+        return False
     return True
 
 
@@ -120,6 +123,12 @@ def main(argv=None):
             lines.append("KRONOS_MODEL=NeoQuasar/Kronos-small")
     else:
         lines.append("FOREX_MODEL_BACKEND=bootstrap")
+
+    print("\nPhone alerts: install the free 'ntfy' app on your phone and subscribe to a private topic name")
+    print("(make it long and hard to guess, like fx-alerts-7k2m9q4w). Alerts arrive even when the app isn't open.")
+    topic = ask("ntfy topic name (leave empty for no phone alerts)").strip()
+    if topic:
+        lines.append("FOREX_NTFY_TOPIC=" + topic)
 
     ENV.write_text("\n".join(lines) + "\n", encoding="utf-8")
     try:

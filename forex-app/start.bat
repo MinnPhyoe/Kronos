@@ -1,5 +1,5 @@
 @echo off
-rem Start the FX app on this computer (Windows). First run: installs what it needs and asks four questions.
+rem Start the FX app on this computer (Windows). First run: installs what it needs and asks a few questions.
 cd /d "%~dp0"
 set PY=
 where py >nul 2>nul && set PY=py -3
