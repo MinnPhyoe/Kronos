@@ -1,0 +1,10 @@
+{
+  "name": "FX Signals",
+  "short_name": "FX Signals",
+  "description": "Forex setups with a forecast band, entry, stop loss and take profit. Analysis and education, not financial advice.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fcfcfb",
+  "theme_color": "#1a1a19",
+  "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

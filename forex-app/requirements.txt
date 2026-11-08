@@ -1,0 +1,11 @@
+# Feed, strategy and API services (Python 3.10+)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+numpy>=1.26
+pandas>=2.0
+httpx>=0.27
+websockets>=12
+# optional: separate services over Redis, PostgreSQL/TimescaleDB storage, Claude explanations
+redis>=5.0
+psycopg[binary]>=3.1
+anthropic>=1.0

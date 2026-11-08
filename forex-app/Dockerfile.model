@@ -1,0 +1,13 @@
+# Model service: Kronos on a GPU. Build from the Kronos repo root (it needs ../model):
+#   docker build -f forex-app/Dockerfile.model -t forex-model .
+# For CPU only (Kronos-mini / -small while testing), swap the base for python:3.11-slim
+# and install torch from https://download.pytorch.org/whl/cpu.
+FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 KRONOS_REPO=/srv/kronos HF_HOME=/srv/hf-cache
+WORKDIR /srv/kronos
+COPY model/ model/
+COPY forex-app/requirements.txt forex-app/requirements.txt
+RUN pip install --no-cache-dir -r forex-app/requirements.txt einops==0.8.1 huggingface_hub==0.33.1 safetensors==0.6.2 tqdm
+COPY forex-app/ forex-app/
+WORKDIR /srv/kronos/forex-app
+CMD ["python", "-m", "forexapp.run", "model"]

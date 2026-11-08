@@ -1,0 +1,7 @@
+# Model service: Kronos needs torch (install the CUDA build for a GPU) plus the Kronos repo's requirements.
+-r requirements.txt
+torch>=2.0.0
+einops==0.8.1
+huggingface_hub==0.33.1
+safetensors==0.6.2
+tqdm

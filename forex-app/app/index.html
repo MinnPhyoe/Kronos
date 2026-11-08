@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>FX Signals</title>
+  <meta name="description" content="Forex setups with a Kronos forecast band, entry, stop loss and take profit. Analysis and education, not financial advice.">
+  <meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script>
+    try { var t = localStorage.getItem("fx.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="picker">
+        <label class="sr" for="pair">Pair</label>
+        <select id="pair" aria-label="Pair"></select>
+        <div class="seg" id="tf" role="tablist" aria-label="Timeframe"></div>
+      </div>
+      <button class="status" id="status" type="button" aria-live="polite" title="Connection status">
+        <span class="dot"></span><span class="status-text">Connecting</span>
+      </button>
+    </header>
+
+    <div id="banners"></div>
+
+    <main>
+      <section id="view-chart" class="view active" aria-label="Chart">
+        <div class="chart-wrap">
+          <div id="chart" class="chart"></div>
+          <div class="legend" id="legend" aria-hidden="true"></div>
+          <div class="chart-key" id="chart-key"></div>
+        </div>
+        <div id="signal-slot"></div>
+      </section>
+
+      <section id="view-signals" class="view" aria-label="Signals">
+        <h1 class="view-title">Active signals</h1>
+        <p class="muted small">Every pair, waiting or triggered. Tap one to open its chart.</p>
+        <div id="signals-list" class="list"></div>
+        <h2 class="sub-title">Scanner</h2>
+        <p class="muted small">Session ranges formed today. A setup on a chart is not a trade to take.</p>
+        <div id="scan-list" class="list"></div>
+        <h2 class="sub-title">Economic calendar</h2>
+        <div id="calendar-list" class="list"></div>
+      </section>
+
+      <section id="view-history" class="view" aria-label="History">
+        <h1 class="view-title">History</h1>
+        <label class="check"><input type="checkbox" id="hist-filtered"> Include filtered signals (the full results log)</label>
+        <div id="stats" class="stats-table"></div>
+        <div id="history-list" class="list"></div>
+      </section>
+
+      <section id="view-settings" class="view" aria-label="Settings">
+        <h1 class="view-title">Settings</h1>
+        <form id="settings-form" class="form" autocomplete="off"></form>
+        <h2 class="sub-title">This device</h2>
+        <div class="form">
+          <label>Theme
+            <select id="theme">
+              <option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option>
+            </select>
+          </label>
+          <label>API token <span class="muted small">(only if the server asks for one)</span>
+            <input id="token" type="password" placeholder="Bearer token">
+          </label>
+          <button class="btn" type="button" id="notify-btn">Allow alerts on this device</button>
+          <p class="muted small" id="notify-state"></p>
+        </div>
+        <h2 class="sub-title">System</h2>
+        <div id="health-box" class="health-box"></div>
+      </section>
+    </main>
+
+    <nav class="tabs" aria-label="Screens">
+      <button data-view="chart" class="active" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg><span>Chart</span></button>
+      <button data-view="signals" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M5 21h14M7 21V10l5-4 5 4v11"/></svg><span>Signals</span><b class="badge" id="badge" hidden></b></button>
+      <button data-view="history" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v4h4M12 7v5l3 2"/></svg><span>History</span></button>
+      <button data-view="settings" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Settings</span></button>
+    </nav>
+    <div id="toasts" aria-live="assertive"></div>
+  </div>
+
+  <script src="/static/vendor/lightweight-charts.standalone.production.js"></script>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

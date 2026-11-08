@@ -1,0 +1,9 @@
+data/*.db
+data/*.db-wal
+data/*.db-shm
+reports/
+models/checkpoints/
+models/finetune/data/
+__pycache__/
+.pytest_cache/
+.env
