@@ -68,6 +68,52 @@ account (free, real broker prices).
 * To change your answers, run `python -m forexapp.setup` (inside the
   `.venv`), or edit `.env`.
 
+## Use Kronos and the Day Trader rules inside OBSIDIAN
+
+OBSIDIAN already fetches real OANDA prices on your Mac. The engine is a small
+private service on the same Mac that OBSIDIAN's backend can ask for a second
+opinion on those prices. It listens on `127.0.0.1:8091` (this computer only).
+
+Start it by double-clicking **`Start Kronos Engine.command`**, or run:
+
+```bash
+python -m forexapp.engine_server
+```
+
+The first start installs the model's software and downloads Kronos-small.
+On a Mac with an Apple chip, Kronos runs on the chip's GPU automatically.
+
+| endpoint | OBSIDIAN sends | the engine answers |
+| --- | --- | --- |
+| `POST /forecast` | pair, timeframe (M1 to D1), its latest closed candles | Kronos band (10-90%), median path, share of paths ending higher |
+| `POST /check` | the same, plus the entry, stop and target your rules chose | Kronos confidence (paths reaching the target before the stop), average R, whether the stop sits where paths dip, Time Machine odds, and `blocks` |
+| `POST /orb` | 1- or 5-minute candles for today | the Day Trader London / New York / Tokyo opening-range breakout: range, waiting or triggered, entry, stop and targets |
+| `GET /health` | | model loaded, name, run time |
+
+In OBSIDIAN's backend (no new packages needed: copy `forexapp/engine_client.py`):
+
+```python
+from engine_client import EngineClient, from_oanda
+
+eng = EngineClient()                                        # add token="..." if ENGINE_TOKEN is set
+candles = from_oanda(oanda_answer["candles"], price="mid")  # the candles OBSIDIAN already fetched
+check = eng.check("EUR_USD", "M15", candles, side="buy", entry=1.0852, stop=1.0838, target=1.0866)
+if check["blocks"]:
+    ...   # like an approved lesson: it can stop this setup, never make one qualify
+```
+
+How it respects OBSIDIAN's rules:
+
+* **Your approved rules still choose the levels.** The engine only judges
+  them; it never picks a trade or places one.
+* **It can only block.** Treat `blocks` like a lesson. The risk engine keeps
+  the final word.
+* **Model estimates are not measured win rates.** Show Kronos confidence and
+  Time Machine odds as estimates, until OBSIDIAN's Call report has graded
+  enough live calls to measure them.
+* **The Day Trader opening-range setup is a new plan.** In OBSIDIAN it should
+  go through Knowledge, Rules for your approval, like any other plan.
+
 ## Try it in two minutes (no keys, no GPU)
 
 ```bash

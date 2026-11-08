@@ -18,7 +18,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent.parent          # forex-app/
 KRONOS_REPO_DEFAULT = APP_DIR.parent                       # the Kronos repo that holds forex-app/
 
-TIMEFRAMES = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
+TIMEFRAMES = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}
 HIGHER_TIMEFRAMES = ("5m", "15m", "1h")
 
 
@@ -43,8 +43,10 @@ def load_dotenv(path) -> None:
 def norm_tf(tf: str) -> str:
     """Accept '1H', '5M', '60m' and return the canonical key ('1h', '5m')."""
     t = (tf or "").strip().lower()
-    if t in ("60m", "h1"):
+    if t == "60m":
         t = "1h"
+    if len(t) >= 2 and t[0] in "mhd" and t[1:].isdigit():      # MetaTrader / OBSIDIAN names: M15, H4, D1
+        t = t[1:] + t[0]
     if t not in TIMEFRAMES:
         raise ValueError("unknown timeframe %r (use one of %s)" % (tf, ", ".join(TIMEFRAMES)))
     return t

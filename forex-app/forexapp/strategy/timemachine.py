@@ -33,29 +33,35 @@ STRONG = 0.15
 MANY_NEITHER = 0.40
 
 
-def build_pool(candles_5m: list, tz: ZoneInfo, before: int, lookback_days: int = 60) -> dict:
-    """slot -> [(o, h, l, c) / previous close] from candles that opened in
-    [before - lookback_days, before). Only consecutive candles count."""
+def _slot(t: int, tz: ZoneInfo, step: int) -> int:
+    return local_slot(t, tz, step) if step < 86400 else 0     # daily candles: one pool, no time of day
+
+
+def build_pool(candles: list, tz: ZoneInfo, before: int, lookback_days: int = 60, step: int = 300) -> dict:
+    """slot -> [(o, h, l, c) / previous close] from candles of ``step`` seconds that opened in
+    [before - lookback_days, before), grouped by time of day. Only consecutive candles count
+    (daily candles may be up to 3 days apart, across the weekend)."""
     start = before - lookback_days * 86400
+    gap = 3 * 86400 if step >= 86400 else step
     pool: dict[int, list] = {}
     prev = None
-    for c in candles_5m:
+    for c in candles:
         if c.open_time >= before:
             break
-        if c.open_time >= start and prev is not None and c.open_time - prev.open_time == 300:
+        if c.open_time >= start and prev is not None and 0 < c.open_time - prev.open_time <= gap:
             pc = prev.close
-            pool.setdefault(local_slot(c.open_time, tz), []).append((c.open / pc, c.high / pc, c.low / pc, c.close / pc))
+            pool.setdefault(_slot(c.open_time, tz, step), []).append((c.open / pc, c.high / pc, c.low / pc, c.close / pc))
         prev = c
     return pool
 
 
-def add_synthetic(pool: dict, forecast, tz: ZoneInfo) -> int:
+def add_synthetic(pool: dict, forecast, tz: ZoneInfo, step: int = 300) -> int:
     """Phase 7: add a forecast's paths to the pool as extra candles."""
     n = 0
     for path in forecast.paths:
         pc = forecast.last_close
         for t, (o, h, l, c) in zip(forecast.times, path):
-            pool.setdefault(local_slot(t, tz), []).append((o / pc, h / pc, l / pc, c / pc))
+            pool.setdefault(_slot(t, tz, step), []).append((o / pc, h / pc, l / pc, c / pc))
             pc = c
             n += 1
     return n
@@ -71,8 +77,8 @@ def _pct(a, q):
 
 def simulate(pool: dict, side: str, start_price: float, entry: float, stop: float, target: float,
              start_time: int, n_bars: int, spread: float, tz: ZoneInfo, replays: int = 2000, seed: int = 19,
-             window: int = 2) -> dict:
-    """Replays of the ``n_bars`` 5-minute candles opening at ``start_time``.
+             window: int = 2, step: int = 300) -> dict:
+    """Replays of the ``n_bars`` candles of ``step`` seconds opening at ``start_time``.
 
     ``start_price`` is the bid at the entry (the path starts there); ``entry`` is
     the fill (the ask for a buy). Buy stops and targets are checked on the bid;
@@ -83,12 +89,13 @@ def simulate(pool: dict, side: str, start_price: float, entry: float, stop: floa
     if risk <= 0:
         raise ValueError("the stop is on the wrong side of the entry")
     r_target = round(((target - entry) if long else (entry - target)) / risk, 4)
-    slots = [local_slot(start_time + 300 * j, tz) for j in range(n_bars)]
+    n_slots = max(1, 86400 // step)
+    slots = [_slot(start_time + step * j, tz, step) for j in range(n_bars)]
     cands = []
     for s in slots:
         rows = []
-        for d in range(-window, window + 1):
-            rows.extend(pool.get((s + d) % SLOTS, ()))
+        for d in ((0,) if n_slots == 1 else range(-window, window + 1)):
+            rows.extend(pool.get((s + d) % n_slots, ()))
         cands.append(rows)
     if any(len(r) == 0 for r in cands):
         raise ValueError("the pool has no candles for some times of day (need more history)")
