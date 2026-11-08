@@ -155,3 +155,88 @@ def test_token_and_client_round_trip():
         server.should_exit = True
         th.join(5)
     assert iso(START)
+
+
+# ---------------------------------------------------------------- the best result: two risk engines + Kronos + Time Machine
+def _orb_minutes(start, end, breakout_at, price=1.1000):
+    """1-minute candles that wiggle, then climb after ``breakout_at``."""
+    rows, p, t, i = [], price, start, 0
+    while t < end:
+        d = 0.00012 if t >= breakout_at else (0.00003 if i % 2 else -0.00003)
+        c = p + d
+        rows.append({"time": t, "open": p, "high": max(p, c) + 0.00002, "low": min(p, c) - 0.00002, "close": c,
+                     "spread": 0.00008})
+        p, t, i = c, t + 60, i + 1
+    return rows
+
+
+def _best_body(**kw):
+    m15 = from_oanda(oanda_candles(START, 400, drift=0.00006), "bid")
+    last = m15[-1]["close"]
+    body = {
+        "markets": [{"pair": "EUR_USD", "timeframe": "M15", "candles": m15},
+                    {"pair": "GBP_USD", "timeframe": "M15", "candles": from_oanda(oanda_candles(START, 400, price=1.27), "bid")}],
+        "candidates": [
+            {"name": "London order block", "pair": "EUR_USD", "timeframe": "M15", "side": "buy",
+             "entry": round(last + 0.0001, 5), "stop": round(last - 0.0015, 5), "target": round(last + 0.0017, 5),
+             "obsidian_risk": "PASS"},
+            {"name": "Bearish breaker", "pair": "EUR_USD", "timeframe": "M15", "side": "sell",
+             "entry": round(last, 5), "stop": round(last + 0.0016, 5), "target": round(last - 0.0016, 5),
+             "obsidian_risk": "PASS"}],
+        "include_orb": False,
+        "account": {"balance": 10000, "currency": "GBP", "risk_per_trade_pct": 0.5, "daily_loss_pct": 2.0},
+        "replays": 400}
+    body.update(kw)
+    return body
+
+
+def test_best_is_the_setup_that_passes_both_risk_engines_and_the_forecast():
+    with TestClient(create_engine_app(Config(), forecaster=Steered(up=27, n_down=3), token="")) as c:
+        r = c.post("/best", json=_best_body()).json()
+        assert r["counts"] == {"candidates": 2, "eligible": 1}
+        sell = next(x for x in r["ranked"] if x["side"] == "sell")
+        assert not sell["eligible"] and any("forecast paths reach the target" in w for w in sell["why_not"])
+        buy = next(x for x in r["ranked"] if x["side"] == "buy")
+        dt = buy["checks"]["daytrader_risk"]
+        assert dt["currency"] == "GBP" and dt["max_loss"] <= 50.0 and dt["lots"] > 0        # 0.5% of 10,000 GBP
+        assert buy["checks"]["obsidian_risk"]["verdict"] == "PASS"
+        assert buy["eligible"] and r["best"]["name"] == "London order block"      # the history trends up, like the paths
+        assert r["message"].startswith("Best: EURUSD buy")
+        assert buy["score_R"] == min(buy["checks"]["kronos"]["avg_R"], buy["checks"]["timemachine"]["avg_R"])
+        assert r["ranked"][0] is not None and r["ranked"][0]["side"] == "buy"
+
+
+def test_obsidian_block_is_never_overridden():
+    body = _best_body()
+    for cand in body["candidates"]:
+        cand["obsidian_risk"], cand["obsidian_reasons"] = "BLOCK", ["daily loss limit used"]
+    with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
+        r = c.post("/best", json=body).json()
+        assert r["best"] is None and all(not x["eligible"] for x in r["ranked"])
+        assert any("OBSIDIAN risk engine: daily loss limit used" in w for w in r["ranked"][0]["why_not"])
+
+
+def test_unverifiable_currency_blocks_in_the_day_trader_check():
+    body = _best_body()
+    body["markets"] = body["markets"][:1]                     # no GBPUSD price: GBP sizing cannot be verified
+    with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
+        r = c.post("/best", json=body).json()
+        buy = next(x for x in r["ranked"] if x["side"] == "buy")
+        assert buy["checks"]["daytrader_risk"]["verdict"] == "BLOCK" and not buy["eligible"]
+        assert "cannot verify" in buy["checks"]["daytrader_risk"]["reasons"][0]
+        body["rates"] = {"GBP_USD": 1.27}                          # given as a rate instead: verifiable again
+        buy = next(x for x in c.post("/best", json=body).json()["ranked"] if x["side"] == "buy")
+        assert buy["checks"]["daytrader_risk"]["verdict"] == "PASS"
+
+
+def test_day_trader_setups_join_and_agreement_is_shown():
+    orb = _orb_minutes(ts("2026-11-05 20:00"), ts("2026-11-06 09:00"), ts("2026-11-06 08:15"))
+    body = _best_body(include_orb=True, sessions=["london"])
+    body["markets"][0]["orb_candles"] = orb
+    with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
+        r = c.post("/best", json=body).json()
+        dtr = [x for x in r["ranked"] if x["source"] == "Day Trader"]
+        assert dtr and dtr[0]["status"] == "triggered" and dtr[0]["side"] == "buy"
+        assert dtr[0]["checks"]["obsidian_risk"]["verdict"] == "NOT CHECKED" and not dtr[0]["eligible"]
+        assert "OBSIDIAN: London order block" in dtr[0]["agrees_with"]
+        assert r["counts"]["candidates"] == 3

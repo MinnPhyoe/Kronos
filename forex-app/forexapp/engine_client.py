@@ -78,6 +78,15 @@ class EngineClient:
         body.update({k: v for k, v in kw.items() if v is not None})
         return self._call("POST", "/check", body)
 
+    def best(self, markets: list, candidates: list, account: dict, **kw) -> dict:
+        """Check every setup with both risk engines, Kronos and the Time Machine; return the best.
+        markets: [{"pair", "timeframe", "candles", "orb_candles"?}]
+        candidates: OBSIDIAN's setups, each with "obsidian_risk": "PASS" or "BLOCK" from its risk engine
+        account: {"balance", "currency", "risk_per_trade_pct", "daily_loss_pct", "trades_today", "risk_used_today"}"""
+        body = {"markets": markets, "candidates": candidates, "account": account}
+        body.update({k: v for k, v in kw.items() if v is not None})
+        return self._call("POST", "/best", body)
+
     def orb(self, pair: str, candles: list, **kw) -> dict:
         body = {"pair": pair, "candles": candles}
         body.update({k: v for k, v in kw.items() if v is not None})

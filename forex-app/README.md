@@ -88,6 +88,7 @@ On a Mac with an Apple chip, Kronos runs on the chip's GPU automatically.
 | `POST /forecast` | pair, timeframe (M1 to D1), its latest closed candles | Kronos band (10-90%), median path, share of paths ending higher |
 | `POST /check` | the same, plus the entry, stop and target your rules chose | Kronos confidence (paths reaching the target before the stop), average R, whether the stop sits where paths dip, Time Machine odds, and `blocks` |
 | `POST /orb` | 1- or 5-minute candles for today | the Day Trader London / New York / Tokyo opening-range breakout: range, waiting or triggered, entry, stop and targets |
+| `POST /best` | its candles, the setups its rules found **with its risk engine's verdict**, the account | every setup checked twice for risk (OBSIDIAN's verdict and the Day Trader risk check), then Kronos and the Time Machine, ranked, with the single **best** one and why the others were not chosen |
 | `GET /health` | | model loaded, name, run time |
 
 In OBSIDIAN's backend (no new packages needed: copy `forexapp/engine_client.py`):
@@ -101,6 +102,43 @@ check = eng.check("EUR_USD", "M15", candles, side="buy", entry=1.0852, stop=1.08
 if check["blocks"]:
     ...   # like an approved lesson: it can stop this setup, never make one qualify
 ```
+
+**The best result.** `POST /best` puts every setup, from OBSIDIAN's rules and the
+Day Trader opening range, through four checks:
+
+1. **OBSIDIAN's risk engine.** Its own verdict, sent in. A BLOCK is never
+   overridden, and a setup it has not checked cannot be chosen.
+2. **The Day Trader risk check.** Run by the engine: max loss per trade
+   (from your risk %), daily loss limit, trades per day, reward:risk, news
+   blackout, spread, the last hour before the Friday close, and lot size in
+   your account currency. Anything it cannot verify, such as a GBP account
+   with no GBP/USD price, counts as a block.
+3. **Kronos.** At least 55% of the forecast paths reach the target before
+   the stop, and the average path result is above zero.
+4. **The Time Machine.** The pair's own history agrees, at or above
+   break-even.
+
+Among the setups that pass all four, the best is the one with the highest
+**cautious estimate**: the lower of Kronos' and the Time Machine's expected R.
+If none passes, the answer says so ("Waiting is a result too"). When OBSIDIAN
+and the Day Trader point the same way on a pair, the result says so
+(`agrees_with`); that is shown, never added to the score.
+
+```python
+result = eng.best(
+    markets=[{"pair": "EUR_USD", "timeframe": "M15", "candles": m15, "orb_candles": m1},
+             {"pair": "GBP_USD", "timeframe": "M15", "candles": gbp_m15}],      # GBP/USD also converts to GBP
+    candidates=[{"name": "London order block", "pair": "EUR_USD", "timeframe": "M15", "side": "buy",
+                 "entry": 1.0852, "stop": 1.0838, "target": 1.0866, "obsidian_risk": "PASS"}],
+    account={"balance": 10000, "currency": "GBP", "risk_per_trade_pct": 0.5, "daily_loss_pct": 2.0,
+             "trades_today": 1, "risk_used_today": 50},
+)
+print(result["message"])          # "Best: EURUSD buy, London order block (OBSIDIAN). ..." or "No setup passed ..."
+```
+
+Day Trader setups come back marked "not checked" by OBSIDIAN. To let one win,
+OBSIDIAN runs its risk engine on it (get them from `POST /orb`) and sends it
+back as a candidate with its verdict.
 
 How it respects OBSIDIAN's rules:
 
