@@ -58,7 +58,7 @@ struct LevelBox: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
                 Circle().fill(color).frame(width: 7, height: 7)
-                Text(title).font(Theme.title(10)).tracking(0.5).foregroundStyle(Theme.dim)
+                Text(title).font(Theme.title(10)).tracking(0.5).foregroundStyle(Theme.dim).lineLimit(1).minimumScaleFactor(0.7)
             }
             Text(value).font(Theme.number(14)).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
             if !note.isEmpty {
@@ -130,7 +130,7 @@ struct SignalCard: View {
                 Pill(text: s.status, color: statusColor(s.status))
             }
             if s.entry != nil {
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
                     LevelBox(title: s.status == "waiting" ? "ENTRY (PLANNED)" : "ENTRY", value: Instrument.price(s.entry, pair), note: "", color: Theme.blue)
                     LevelBox(title: "STOP", value: Instrument.price(s.sl, pair), note: s.slPips.map { v in String(format: "%.1f pips", v) } ?? "", color: Theme.bad)
                     LevelBox(title: "TP1", value: Instrument.price(s.tp1, pair), note: s.tp1Pips.map { v in String(format: "%.1f pips", v) } ?? "", color: Theme.good)

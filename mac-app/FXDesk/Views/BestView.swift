@@ -63,7 +63,16 @@ struct BestView: View {
                         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.card))
                     }
                 }
-                if ranked.isEmpty {
+                let filtered = model.signals.values
+                    .filter { sig in sig.status == "filtered" }
+                    .sorted { a, b in (a.createdTs ?? 0) > (b.createdTs ?? 0) }
+                if !filtered.isEmpty {
+                    Text("Checked and filtered out").font(Theme.display(22)).foregroundStyle(Theme.text).padding(.top, 8)
+                    ForEach(filtered) { sig in
+                        FilteredRow(signal: sig)
+                    }
+                }
+                if ranked.isEmpty && filtered.isEmpty {
                     Panel("") {
                         HStack(spacing: 14) {
                             CandleBuddy(mood: .sleepy).frame(width: 50)
@@ -86,5 +95,53 @@ struct BestView: View {
                 .help("Ask the engine for the latest setups")
         }
         .sheet(item: $recordFrom) { s in RecordEditor(signal: s, record: nil).environmentObject(model) }
+    }
+}
+
+/// A setup the engine checked and turned down, with the checks that failed.
+struct FilteredRow: View {
+    let signal: Signal
+
+    var body: some View {
+        let s = signal
+        let failed = (s.filters ?? []).filter { f in !f.ok }
+        let riskReasons = s.risk?.reasons ?? []
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                PairBadge(pair: s.pair, size: 22)
+                Text("\(Instrument.display(s.pair)) \((s.side ?? "").uppercased())")
+                    .font(Theme.title(15)).foregroundStyle(Theme.text).lineLimit(1).fixedSize()
+                Text(s.setup ?? "").font(Theme.body(12)).foregroundStyle(Theme.dim).lineLimit(1)
+                Spacer()
+                Pill(text: "filtered", color: statusColor("filtered"))
+            }
+            ForEach(failed) { f in
+                Label(FilteredRow.describe(f), systemImage: "xmark.circle.fill")
+                    .font(Theme.body(12))
+                    .foregroundStyle(Theme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if failed.isEmpty {
+                ForEach(Array(riskReasons.enumerated()), id: \.offset) { _, r in
+                    Label("Day Trader risk check: \(r)", systemImage: "xmark.circle.fill")
+                        .font(Theme.body(12))
+                        .foregroundStyle(Theme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.card))
+    }
+
+    static func describe(_ f: FilterItem) -> String {
+        let names: [String: String] = [
+            "forecast": "Kronos forecast", "plan": "Exits", "confidence": "Kronos",
+            "expectancy": "Expected result", "timemachine": "Time Machine", "risk": "Day Trader risk check",
+            "htf": "Higher timeframe", "regime": "Market regime", "volatility": "Volatility",
+        ]
+        let label = names[f.name] ?? f.name.capitalized
+        guard let d = f.detail, !d.isEmpty else { return label }
+        return label + ": " + d
     }
 }
