@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum Screen: String, CaseIterable, Identifiable {
@@ -50,6 +51,7 @@ struct ContentView: View {
         .tint(Theme.pink)
         .background(Theme.bg)
         .onAppear { model.boot() }
+        .task { await tourIfAsked() }
         .overlay(alignment: .bottom) {
             if let m = model.message {
                 Text(m)
@@ -70,6 +72,35 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.message)
+    }
+
+    /// For automated runs only (never in normal use): with FXDESK_TOUR_DIR set, wait for the engine,
+    /// open each screen in turn, write "<screen>.ready" there, wait for "<screen>.done", then quit.
+    @MainActor private func tourIfAsked() async {
+        guard let dir = ProcessInfo.processInfo.environment["FXDESK_TOUR_DIR"], !dir.isEmpty else { return }
+        let files = FileManager.default
+        var waited = 0
+        while waited < 1800 {
+            if case .failed = model.engineState { break }
+            if model.engineState == .running { break }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            waited += 1
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000_000)
+        for s in Screen.allCases {
+            screen = s
+            if s == .live, model.engineState == .running {
+                await model.analyseNow()
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            files.createFile(atPath: dir + "/" + s.rawValue + ".ready", contents: nil)
+            var tries = 0
+            while tries < 120, !files.fileExists(atPath: dir + "/" + s.rawValue + ".done") {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                tries += 1
+            }
+        }
+        NSApp.terminate(nil)
     }
 
     @ViewBuilder private var detail: some View {

@@ -18,6 +18,8 @@ if [ -z "$PY" ]; then
   exit 2
 fi
 
+echo "Using $PY ($("$PY" -V 2>&1))"
+
 if [ ! -x .venv/bin/python ]; then
   echo "FXDESK:STAGE First start: creating the engine's Python environment"
   "$PY" -m venv .venv || { echo "FXDESK:ERROR could not create .venv"; exit 3; }

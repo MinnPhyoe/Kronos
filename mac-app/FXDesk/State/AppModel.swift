@@ -94,6 +94,10 @@ final class AppModel: ObservableObject {
         engineState = .starting("Starting the engine…")
         engineLog.removeAll()
         let folder = URL(fileURLWithPath: settings.engineFolder, isDirectory: true)
+        // the engine reads its settings from .env: write them first, or a first start runs on its defaults
+        if FileManager.default.fileExists(atPath: folder.appendingPathComponent("scripts/mac-engine.sh").path) {
+            writeEngineEnv(settings, oandaToken: nil)
+        }
         do {
             try engine.start(folder: folder, port: settings.port, onLine: { [weak self] line in
                 self?.engineLine(line)
@@ -314,15 +318,7 @@ final class AppModel: ObservableObject {
             || new.oandaAccount != settings.oandaAccount || !(oandaToken ?? "").isEmpty
         settings = new
         new.save()
-        let envURL = URL(fileURLWithPath: new.engineFolder).appendingPathComponent(".env")
-        let existing = (try? String(contentsOf: envURL, encoding: .utf8)) ?? "# Written by FX Desk. Private: never share or upload this file.\n"
-        let merged = EnvFile.merge(existing: existing, updates: new.envUpdates(oandaToken: oandaToken))
-        do {
-            try merged.write(to: envURL, atomically: true, encoding: .utf8)
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: envURL.path)
-        } catch {
-            message = "Could not write the engine settings: \(error.localizedDescription)"
-        }
+        writeEngineEnv(new, oandaToken: oandaToken)
         api = APIClient(baseURL: new.baseURL, token: AppModel.readEnvPassword(new))
         if !new.pairs.contains(pair), let first = new.pairs.first { pair = first }
         if engineChanged {
@@ -331,6 +327,20 @@ final class AppModel: ObservableObject {
             Task { try? await api.putSettings(new.engineAccount) }
         }
         message = engineChanged ? "Saved. Restarting the engine with the new settings." : "Saved."
+    }
+
+    /// Merge the settings into the engine's private .env (only you can read it); other keys, like tokens, are kept.
+    private func writeEngineEnv(_ s: AppSettings, oandaToken: String?) {
+        let envURL = URL(fileURLWithPath: s.engineFolder).appendingPathComponent(".env")
+        let existing = (try? String(contentsOf: envURL, encoding: .utf8)) ?? "# Written by FX Desk. Private: never share or upload this file.\n"
+        let merged = EnvFile.merge(existing: existing, updates: s.envUpdates(oandaToken: oandaToken))
+        guard merged != existing else { return }
+        do {
+            try merged.write(to: envURL, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: envURL.path)
+        } catch {
+            message = "Could not write the engine settings: \(error.localizedDescription)"
+        }
     }
 
     var hasOandaToken: Bool {

@@ -1,0 +1,108 @@
+name: FX Desk on a Mac
+
+# Builds the FX Desk Mac app on a GitHub-hosted Mac and runs its tests. Then it runs the app the way
+# a user would: the app sets up and starts the engine itself. It takes a screenshot of each screen.
+on:
+  push:
+    branches: [claude/sweet-hypatia-7v3qxy]
+    paths: ["mac-app/**", "forex-app/**", ".github/workflows/fxdesk-mac.yml", "!mac-app/screenshots/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: fxdesk-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  run-on-a-mac:
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: About this Mac
+        run: |
+          sw_vers
+          xcodebuild -version
+          system_profiler SPDisplaysDataType | grep -iE "resolution|display type" || true
+          which -a python3 || true
+
+      - name: Logic tests (swift test)
+        continue-on-error: true
+        working-directory: mac-app
+        run: swift test 2>&1 | tee ../swift-test.log
+
+      - name: Build FX Desk (xcodebuild)
+        working-directory: mac-app
+        run: |
+          set +e
+          xcodebuild -project FXDesk.xcodeproj -target FXDesk -configuration Debug SYMROOT="$PWD/build" build > ../xcodebuild.log 2>&1
+          code=$?
+          grep -E "error:|warning:" ../xcodebuild.log | grep -v "^ld: warning" | sort -u
+          grep -E "BUILD (SUCCEEDED|FAILED)" ../xcodebuild.log
+          [ $code -eq 0 ] && test -d build/Debug/FXDesk.app
+
+      - name: Run FX Desk like a user would
+        env:
+          TOUR: ${{ runner.temp }}/tour
+        run: |
+          mkdir -p ~/Applications "$TOUR" shots
+          ln -sfn "$GITHUB_WORKSPACE" ~/Applications/Kronos
+          FXDESK_TOUR_DIR="$TOUR" ./mac-app/build/Debug/FXDesk.app/Contents/MacOS/FXDesk > app.log 2>&1 &
+          APP=$!
+          sleep 40
+          screencapture -x shots/0-first-start.png && echo "captured the first start"
+          i=1
+          limit=2700                  # the first start installs the packages and downloads Kronos
+          for s in home live best records alerts settings; do
+            n=0
+            while [ ! -f "$TOUR/$s.ready" ] && [ $n -lt $limit ] && kill -0 $APP 2>/dev/null; do sleep 1; n=$((n+1)); done
+            limit=240
+            if [ ! -f "$TOUR/$s.ready" ]; then echo "::warning::The app did not reach the $s screen"; break; fi
+            screencapture -x "shots/$i-$s.png" && echo "captured $s"
+            if [ $s = settings ]; then
+              echo "---- engine health"; curl -s --max-time 5 http://127.0.0.1:8000/health; echo
+              echo "---- signals"; curl -s --max-time 5 "http://127.0.0.1:8000/signals?status=all&include_filtered=true" | head -c 1500; echo
+            fi
+            touch "$TOUR/$s.done"
+            i=$((i+1))
+          done
+          sleep 8
+          kill $APP 2>/dev/null && echo "(had to stop the app)" || echo "the app quit by itself"
+          cp ~/Library/Logs/FXDesk/engine.log engine.log 2>/dev/null || true
+          echo "---- engine log (last 60 lines)"; tail -60 engine.log || true
+          echo "---- app log"; tail -40 app.log || true
+          ls shots
+
+      - name: Keep the logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fxdesk-run
+          path: |
+            shots/
+            app.log
+            engine.log
+            xcodebuild.log
+            swift-test.log
+          if-no-files-found: warn
+
+      - name: Save the screenshots on this branch
+        if: always()
+        run: |
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          rm -rf mac-app/screenshots && mkdir -p mac-app/screenshots
+          cp shots/*.png mac-app/screenshots/
+          for f in mac-app/screenshots/*.png; do sips -Z 1600 "$f" >/dev/null; done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A mac-app/screenshots
+          git diff --cached --quiet && exit 0
+          git commit -m "Screenshots of FX Desk running on a GitHub Mac (run ${{ github.run_id }})"
+          for i in 1 2 3; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break; sleep 5; done
