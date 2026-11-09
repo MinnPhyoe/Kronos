@@ -96,7 +96,7 @@ final class AppModel: ObservableObject {
         let folder = URL(fileURLWithPath: settings.engineFolder, isDirectory: true)
         // the engine reads its settings from .env: write them first, or a first start runs on its defaults
         if FileManager.default.fileExists(atPath: folder.appendingPathComponent("scripts/mac-engine.sh").path) {
-            writeEngineEnv(settings, oandaToken: nil)
+            writeEngineEnv(settings, oandaToken: nil, phonePassword: nil)
         }
         do {
             try engine.start(folder: folder, port: settings.port, onLine: { [weak self] line in
@@ -312,13 +312,14 @@ final class AppModel: ObservableObject {
     // MARK: settings
 
     /// Save settings, write them into the engine's private .env, and restart the engine when needed.
-    func apply(_ new: AppSettings, oandaToken: String?) {
+    func apply(_ new: AppSettings, oandaToken: String?, phonePassword: String? = nil) {
         let engineChanged = new.provider != settings.provider || new.pairs != settings.pairs || new.sessions != settings.sessions
             || new.useKronos != settings.useKronos || new.port != settings.port || new.engineFolder != settings.engineFolder
             || new.oandaAccount != settings.oandaAccount || !(oandaToken ?? "").isEmpty
+            || new.phoneAccess != settings.phoneAccess || !(phonePassword ?? "").isEmpty
         settings = new
         new.save()
-        writeEngineEnv(new, oandaToken: oandaToken)
+        writeEngineEnv(new, oandaToken: oandaToken, phonePassword: phonePassword)
         api = APIClient(baseURL: new.baseURL, token: AppModel.readEnvPassword(new))
         if !new.pairs.contains(pair), let first = new.pairs.first { pair = first }
         if engineChanged {
@@ -330,10 +331,10 @@ final class AppModel: ObservableObject {
     }
 
     /// Merge the settings into the engine's private .env (only you can read it); other keys, like tokens, are kept.
-    private func writeEngineEnv(_ s: AppSettings, oandaToken: String?) {
+    private func writeEngineEnv(_ s: AppSettings, oandaToken: String?, phonePassword: String?) {
         let envURL = URL(fileURLWithPath: s.engineFolder).appendingPathComponent(".env")
         let existing = (try? String(contentsOf: envURL, encoding: .utf8)) ?? "# Written by FX Desk. Private: never share or upload this file.\n"
-        let merged = EnvFile.merge(existing: existing, updates: s.envUpdates(oandaToken: oandaToken))
+        let merged = EnvFile.merge(existing: existing, updates: s.envUpdates(oandaToken: oandaToken, phonePassword: phonePassword))
         guard merged != existing else { return }
         do {
             try merged.write(to: envURL, atomically: true, encoding: .utf8)
@@ -341,6 +342,17 @@ final class AppModel: ObservableObject {
         } catch {
             message = "Could not write the engine settings: \(error.localizedDescription)"
         }
+    }
+
+    var hasPhonePassword: Bool {
+        let envURL = URL(fileURLWithPath: settings.engineFolder).appendingPathComponent(".env")
+        let text = (try? String(contentsOf: envURL, encoding: .utf8)) ?? ""
+        return (EnvFile.value("FOREX_PASSWORD", in: text) ?? "").count >= 8
+    }
+
+    /// The web addresses your phone can open, when "Use on my phone" is on and the engine is live.
+    var phoneAddresses: [String] {
+        NetworkInfo.addresses().map { a in "http://\(a.host):\(settings.port)" }
     }
 
     var hasOandaToken: Bool {

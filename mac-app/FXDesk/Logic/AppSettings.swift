@@ -12,6 +12,7 @@ struct AppSettings: Codable, Equatable {
     var useKronos: Bool = true
     var notifications: Bool = true
     var limits = RiskLimits()
+    var phoneAccess: Bool = false              // let your phone open the engine's web app on your network
 
     static let allPairs = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
     static let allSessions = [("london", "London 08:00"), ("newyork", "New York 08:00"), ("tokyo", "Tokyo 09:00 (JPY)")]
@@ -32,15 +33,17 @@ struct AppSettings: Codable, Equatable {
     var baseURL: URL { URL(string: "http://127.0.0.1:\(port)")! }
 
     /// The engine settings that live in its .env file (nil removes a key).
-    func envUpdates(oandaToken: String?) -> [String: String?] {
+    func envUpdates(oandaToken: String?, phonePassword: String? = nil) -> [String: String?] {
         var u: [String: String?] = [
             "FOREX_PROVIDER": provider,
             "FOREX_PAIRS": pairs.joined(separator: ","),
             "FOREX_SESSIONS": sessions.joined(separator: ","),
             "FOREX_MODEL_BACKEND": useKronos ? "kronos" : "bootstrap",
             "FOREX_PORT": String(port),
-            "FOREX_HOST": "127.0.0.1",
+            // the engine script listens on the network only when this says so AND a password is set
+            "FOREX_HOST": phoneAccess ? "0.0.0.0" : "127.0.0.1",
         ]
+        if let p = phonePassword, !p.isEmpty { u["FOREX_PASSWORD"] = p }
         if provider == "oanda" {
             u["OANDA_ACCOUNT"] = oandaAccount
             u["OANDA_ENV"] = "practice"
@@ -61,6 +64,34 @@ struct AppSettings: Codable, Equatable {
             "pairs": pairs,
             "sessions": sessions,
         ]
+    }
+}
+
+extension AppSettings {
+    /// Settings saved by an older version lack newer options: those keep their defaults instead of
+    /// the whole file failing to load.
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engineFolder = try c.decodeIfPresent(String.self, forKey: .engineFolder) ?? engineFolder
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? port
+        provider = try c.decodeIfPresent(String.self, forKey: .provider) ?? provider
+        oandaAccount = try c.decodeIfPresent(String.self, forKey: .oandaAccount) ?? oandaAccount
+        pairs = try c.decodeIfPresent([String].self, forKey: .pairs) ?? pairs
+        sessions = try c.decodeIfPresent([String].self, forKey: .sessions) ?? sessions
+        useKronos = try c.decodeIfPresent(Bool.self, forKey: .useKronos) ?? useKronos
+        notifications = try c.decodeIfPresent(Bool.self, forKey: .notifications) ?? notifications
+        limits = (try? c.decodeIfPresent(RiskLimits.self, forKey: .limits)) ?? limits
+        phoneAccess = try c.decodeIfPresent(Bool.self, forKey: .phoneAccess) ?? phoneAccess
+    }
+
+    /// Why a phone password can't be used, or nil when it is fine.
+    static func phonePasswordProblem(_ p: String) -> String? {
+        if p.count < 8 { return "Use at least 8 characters." }
+        if p != p.trimmingCharacters(in: .whitespacesAndNewlines) { return "No spaces at the start or end." }
+        if p.contains("\n") || p.contains("\r") { return "Use a single line." }
+        if let f = p.first, let l = p.last, f == l, f == "\"" || f == "'" { return "Don't wrap it in quotes." }
+        return nil
     }
 }
 

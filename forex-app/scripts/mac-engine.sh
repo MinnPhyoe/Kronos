@@ -41,6 +41,15 @@ if [ "${BACKEND:-kronos}" != "bootstrap" ] && ! "$VPY" -c "import torch, einops,
 fi
 
 echo "FXDESK:STAGE Starting the engine"
-export FOREX_HOST=127.0.0.1                 # this Mac only
+# Only this Mac can reach the engine, unless "Use on my phone" is on (FOREX_HOST=0.0.0.0 in .env)
+# AND a password of 8 or more characters is set: then your phone on the same network can, with the password.
+HOST_WANTED="$(grep -E '^FOREX_HOST=' .env 2>/dev/null | tail -1 | cut -d= -f2-)"
+PASSWORD_SET="$(grep -E '^FOREX_PASSWORD=' .env 2>/dev/null | tail -1 | cut -d= -f2-)"
+if [ "$HOST_WANTED" = "0.0.0.0" ] && [ "${#PASSWORD_SET}" -ge 8 ]; then
+  export FOREX_HOST=0.0.0.0
+  echo "Your phone can open the engine on this network, with your password."
+else
+  export FOREX_HOST=127.0.0.1               # this Mac only
+fi
 export PYTORCH_ENABLE_MPS_FALLBACK=1        # on Apple silicon, any step the graphics chip can't do runs on the CPU
 exec "$VPY" -m forexapp.run all --port "${FOREX_PORT:-8000}"

@@ -68,6 +68,26 @@ Candle Buddy, the mascot, shows how things are going:
 
 The animations pause when **Reduce motion** is on in System Settings → Accessibility → Display.
 
+## Use it on your phone
+
+FX Desk itself runs only on the Mac. Its engine also serves a phone version: the live chart, the signal
+cards and alerts. Your trade records stay in the Mac app.
+
+1. In FX Desk, open **Settings → Use on my phone**. Turn it on, choose a password of 8 characters or more,
+   and press **Save**. The engine restarts.
+2. Settings now shows this Mac's address and a QR code. Scan the QR code with your iPhone camera, or type
+   the address into Safari. Your phone must be on the same Wi‑Fi.
+3. Log in with your password. Then tap **Share → Add to Home Screen** to get an icon like an app.
+
+- **Your Mac must be on, with FX Desk open.** The phone shows what the Mac's engine works out.
+- **If macOS asks** whether Python may accept incoming network connections, choose **Allow**.
+- **Away from home:** install the free [Tailscale](https://tailscale.com/download) app on the Mac and the
+  phone, and sign both into the same account. A Tailscale address (100.x.x.x) then appears in Settings.
+  Tailscale connects them privately, without opening anything to the internet.
+- **Avoid public Wi‑Fi without Tailscale.** The home-network address isn't encrypted.
+- **Safety:** the engine listens on your network only while this option is on **and** a password is set.
+  After several wrong passwords, that device is locked out for a while.
+
 ## The two risk engines
 
 1. **Day Trader risk check (in the engine).** It checks size, stop, reward to risk and the session rules. It returns PASS or BLOCK.

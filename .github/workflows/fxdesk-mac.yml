@@ -73,6 +73,11 @@ jobs:
           # a longer timeout. (One batch of four setup checks took 333 s here with 30 paths.)
           export FOREX_LOOKBACK=240 FOREX_PATHS=10 FOREX_CHART_FORECASTS=0 FOREX_MODEL_TIMEOUT_S=900
           echo "prices: $PRICES"
+          # Turn "Use on my phone" on the way the Settings screen saves it, with a throwaway password for this run.
+          # The settings hold only that one option, which also checks that older saved settings still load.
+          PHONE_PW="ci-only-$(openssl rand -hex 6)"
+          mkdir -p forex-app && printf 'FOREX_PASSWORD=%s\n' "$PHONE_PW" >> forex-app/.env
+          defaults write com.minnphyoe.fxdesk FXDesk.settings -data "$(printf '{"phoneAccess":true}' | xxd -p | tr -d '\n')"
           FXDESK_TOUR_DIR="$TOUR" ./mac-app/build/Debug/FXDesk.app/Contents/MacOS/FXDesk > app.log 2>&1 &
           APP=$!
           sleep 40
@@ -87,7 +92,17 @@ jobs:
             screencapture -x "shots/$i-$s.png" && echo "captured $s"
             if [ $s = settings ]; then
               echo "---- engine health"; curl -s --max-time 5 http://127.0.0.1:8000/health; echo
-              echo "---- signals"; curl -s --max-time 5 "http://127.0.0.1:8000/signals?status=all&include_filtered=true" | head -c 1500; echo
+              echo "---- signals"; curl -s --max-time 5 -H "Authorization: Bearer $PHONE_PW" \
+                "http://127.0.0.1:8000/signals?status=all&include_filtered=true" | head -c 1500; echo
+              LANIP="$(ipconfig getifaddr en0 || ipconfig getifaddr en1 || true)"
+              echo "---- the phone's view, from this Mac's network address $LANIP"
+              no_pw=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$LANIP:8000/signals" || true)
+              with_pw=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -H "Authorization: Bearer $PHONE_PW" "http://$LANIP:8000/signals" || true)
+              page=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$LANIP:8000/" || true)
+              echo "without the password: $no_pw (want 401)"
+              echo "with the password:    $with_pw (want 200)"
+              echo "phone web app page:   $page (want 200)"
+              if [ "$no_pw" = 401 ] && [ "$with_pw" = 200 ] && [ "$page" = 200 ]; then echo "PHONE ACCESS: OK"; else echo "::warning::Phone access check failed"; fi
             fi
             touch "$TOUR/$s.done"
             i=$((i+1))

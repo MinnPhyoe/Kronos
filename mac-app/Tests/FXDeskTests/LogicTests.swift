@@ -84,3 +84,51 @@ final class EnvAndStreamTests: XCTestCase {
         XCTAssertEqual(candle.candle?.openTime, 1794211200)
     }
 }
+
+final class PhoneAccessTests: XCTestCase {
+    func testSettingsSavedBeforeThePhoneOptionStillLoad() throws {
+        let old = #"{"engineFolder":"/Users/me/Kronos/forex-app","port":8001,"provider":"oanda","pairs":["EURUSD"]}"#
+        let s = try JSONDecoder().decode(AppSettings.self, from: Data(old.utf8))
+        XCTAssertEqual(s.engineFolder, "/Users/me/Kronos/forex-app")
+        XCTAssertEqual(s.port, 8001)
+        XCTAssertEqual(s.provider, "oanda")
+        XCTAssertEqual(s.pairs, ["EURUSD"])
+        XCTAssertFalse(s.phoneAccess)
+        XCTAssertEqual(s.sessions, AppSettings().sessions)
+    }
+
+    func testSettingsRoundTrip() throws {
+        var s = AppSettings()
+        s.phoneAccess = true
+        s.limits.balance = 2500
+        let back = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(s))
+        XCTAssertEqual(back, s)
+    }
+
+    func testPhoneOptionOpensTheHostAndWritesThePassword() {
+        var s = AppSettings()
+        XCTAssertEqual(s.envUpdates(oandaToken: nil)["FOREX_HOST"], "127.0.0.1")
+        s.phoneAccess = true
+        let u = s.envUpdates(oandaToken: nil, phonePassword: "blue-horse-42")
+        XCTAssertEqual(u["FOREX_HOST"], "0.0.0.0")
+        XCTAssertEqual(u["FOREX_PASSWORD"], "blue-horse-42")
+        XCTAssertNil(s.envUpdates(oandaToken: nil)["FOREX_PASSWORD"] as Any?)
+    }
+
+    func testPhonePasswordRules() {
+        XCTAssertNotNil(AppSettings.phonePasswordProblem("short"))
+        XCTAssertNotNil(AppSettings.phonePasswordProblem(" spaces-around "))
+        XCTAssertNotNil(AppSettings.phonePasswordProblem("\"quoted-pass\""))
+        XCTAssertNil(AppSettings.phonePasswordProblem("blue horse 42"))
+    }
+
+    func testOnlyHomeNetworkAndTailscaleAddressesAreOffered() {
+        XCTAssertEqual(NetworkInfo.kind(of: "192.168.1.20"), "home network")
+        XCTAssertEqual(NetworkInfo.kind(of: "10.0.0.5"), "home network")
+        XCTAssertEqual(NetworkInfo.kind(of: "172.20.1.1"), "home network")
+        XCTAssertEqual(NetworkInfo.kind(of: "100.101.102.103"), "Tailscale")
+        XCTAssertNil(NetworkInfo.kind(of: "169.254.3.4"))
+        XCTAssertNil(NetworkInfo.kind(of: "8.8.8.8"))
+        XCTAssertNil(NetworkInfo.kind(of: "172.40.1.1"))
+    }
+}
