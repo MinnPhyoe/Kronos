@@ -18,6 +18,8 @@ struct Pill: View {
         Text(text.uppercased())
             .font(Theme.title(10))
             .tracking(0.6)
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .foregroundStyle(color)
@@ -109,14 +111,22 @@ struct SignalCard: View {
         let s = signal
         let pair = s.pair
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 PairBadge(pair: pair, size: 26)
-                Text(Instrument.display(pair)).font(Theme.display(22)).foregroundStyle(Theme.text)
-                if let side = s.side {
-                    Pill(text: side, color: side == "buy" ? Theme.blue : Theme.bad)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Instrument.display(pair))
+                        .font(Theme.display(22))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                        .fixedSize()
+                    HStack(spacing: 6) {
+                        if let side = s.side {
+                            Pill(text: side, color: side == "buy" ? Theme.blue : Theme.bad)
+                        }
+                        Text(s.setup ?? "").font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
+                    }
                 }
-                Text(s.setup ?? "").font(Theme.body(13)).foregroundStyle(Theme.dim)
-                Spacer()
+                Spacer(minLength: 8)
                 Pill(text: s.status, color: statusColor(s.status))
             }
             if s.entry != nil {

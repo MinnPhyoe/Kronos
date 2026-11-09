@@ -3,11 +3,13 @@ import Foundation
 enum APIError: LocalizedError {
     case http(Int, String)
     case notRunning
+    case tooSlow
 
     var errorDescription: String? {
         switch self {
         case .http(let code, let detail): return "Engine answered \(code): \(detail)"
         case .notRunning: return "The engine is not running."
+        case .tooSlow: return "The engine took more than 3 minutes to answer. Kronos may still be busy: without a graphics chip it can use, it is slow."
         }
     }
 }
@@ -42,6 +44,8 @@ final class APIClient {
         let result: (Data, URLResponse)
         do {
             result = try await session.data(for: r)
+        } catch let e as URLError where e.code == .timedOut {
+            throw APIError.tooSlow
         } catch {
             throw APIError.notRunning
         }

@@ -42,4 +42,5 @@ fi
 
 echo "FXDESK:STAGE Starting the engine"
 export FOREX_HOST=127.0.0.1                 # this Mac only
+export PYTORCH_ENABLE_MPS_FALLBACK=1        # on Apple silicon, any step the graphics chip can't do runs on the CPU
 exec "$VPY" -m forexapp.run all --port "${FOREX_PORT:-8000}"

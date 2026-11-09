@@ -55,6 +55,7 @@ class KronosForecaster:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.predictor = None
+        self.device = None
         self.lock = threading.Lock()
         self.load_error: str | None = None
         self.name = model_name(cfg)
@@ -90,6 +91,10 @@ class KronosForecaster:
             self.load_error = "could not load %s / %s: %s" % (model_src, tok_src, e)
             raise KronosUnavailable(self.load_error) from e
         log.info("loaded %s on %s in %.1fs", model_src, device, time.perf_counter() - t0)
+        self.device = device
+        if device == "cpu":
+            log.warning("Kronos is running on the CPU: each forecast can take a minute or more per pair. "
+                        "A Mac with Apple silicon uses its graphics chip (mps) instead, which is much faster.")
 
     # ------------------------------------------------------------------ forecasting
     @staticmethod

@@ -66,9 +66,20 @@ class ModelService:
             self.wake.clear()
             batch = list(self.pending.values())
             self.pending.clear()
-            # setup requests first: they decide signals
-            batch.sort(key=lambda m: m.get("reason") == "chart")
-            await self._run(batch)
+            # Setup requests decide signals, so they run in their own batch first: a slow machine must not
+            # make them wait for every pair's chart forecast as well.
+            urgent = [m for m in batch if m.get("reason") != "chart"]
+            chart = [m for m in batch if m.get("reason") == "chart"]
+            if urgent:
+                await self._run(urgent)
+            if chart and any(m.get("reason") != "chart" for m in self.pending.values()):
+                # more setup requests came in meanwhile: they go next; keep the newest chart request per pair
+                for m in chart:
+                    self.pending.setdefault((m["pair"], norm_tf(m.get("tf", "5m")), "chart"), m)
+                self.wake.set()
+                continue
+            if chart:
+                await self._run(chart)
 
     async def _run(self, batch: list):
         jobs, metas = [], []

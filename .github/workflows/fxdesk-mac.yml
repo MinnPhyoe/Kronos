@@ -64,10 +64,13 @@ jobs:
           if [ "$PRICES" = simulated ]; then
             # Yahoo refuses GitHub's servers (HTTP 429), so use the engine's simulated market for this run.
             # The process environment wins over .env. The market starts before today's London open and
-            # runs 60 times faster, so the opening ranges form while the app is open.
-            export FOREX_PROVIDER=simulated FOREX_SIM_SPEED=60 FOREX_SIM_START="$(date -u +%Y-%m-%dT07:35:00Z)"
-            export FXDESK_TOUR_WAIT=150
+            # runs 10 times faster, so the opening range forms and breaks while the app is open.
+            export FOREX_PROVIDER=simulated FOREX_SIM_SPEED=10 FOREX_SIM_START="$(date -u +%Y-%m-%dT07:50:00Z)"
+            export FXDESK_TOUR_WAIT=480
           fi
+          # GitHub's virtual Macs have no graphics chip Kronos can use, so Kronos runs on a slow CPU here.
+          # Lighter settings for this run only: a shorter lookback, no chart forecasts, a longer timeout.
+          export FOREX_LOOKBACK=240 FOREX_CHART_FORECASTS=0 FOREX_MODEL_TIMEOUT_S=900
           echo "prices: $PRICES"
           FXDESK_TOUR_DIR="$TOUR" ./mac-app/build/Debug/FXDesk.app/Contents/MacOS/FXDesk > app.log 2>&1 &
           APP=$!
