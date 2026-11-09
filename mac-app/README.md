@@ -29,7 +29,24 @@ Your trades are kept as records on this Mac.
    - Later starts take a few seconds.
 
 If the build fails, copy the first error from Xcode's Issue navigator and paste it back to Claude.
-The app could not be compiled where it was written, so expect a small fix or two on the first build.
+
+**Kronos speed.** On a Mac with Apple silicon (M1 or later), Kronos runs on the graphics chip, so it is fast.
+On an Intel Mac, or anywhere it has to use the CPU, one forecast takes a minute or more per pair. If that is
+too slow, turn off **Use Kronos** in Settings. The app then uses a simple statistical stand-in and says so.
+
+## Tested on a Mac
+
+`.github/workflows/fxdesk-mac.yml` builds the app on one of GitHub's Macs (macOS 15, Xcode 16) and runs the
+logic tests. Then it runs the app the way a new user would: the app installs the engine and Kronos, starts
+it, and opens each screen. It saves a screenshot of each screen in [`screenshots/`](screenshots).
+
+That run uses the engine's simulated market at 10× speed, because Yahoo refuses GitHub's servers. GitHub's
+Macs have no graphics chip Kronos can use, so the run also uses lighter Kronos settings (10 paths, a
+240-candle lookback). On your Mac the app uses your real settings.
+
+| Home | Live chart | Best result |
+| --- | --- | --- |
+| ![Home](screenshots/1-home.png) | ![Live chart](screenshots/2-live.png) | ![Best result](screenshots/3-best.png) |
 
 ## The screens
 
