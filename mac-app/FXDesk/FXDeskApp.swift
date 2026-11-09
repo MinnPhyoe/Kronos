@@ -14,9 +14,10 @@ struct FXDeskApp: App {
         WindowGroup("FX Desk") {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 1100, minHeight: 700)
+                .frame(minWidth: 980, minHeight: 640)
                 .preferredColorScheme(.dark)
         }
+        .defaultSize(width: 1280, height: 820)
         .modelContainer(for: TradeRecord.self)
         .commands {
             CommandGroup(replacing: .newItem) {}

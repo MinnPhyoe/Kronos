@@ -86,7 +86,13 @@ struct ContentView: View {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             waited += 1
         }
-        try? await Task.sleep(nanoseconds: 20_000_000_000)
+        let settle = UInt64(ProcessInfo.processInfo.environment["FXDESK_TOUR_WAIT"].flatMap { v in Int(v) } ?? 20)
+        try? await Task.sleep(nanoseconds: settle * 1_000_000_000)
+        await model.refreshAll()
+        if let s = model.activeSignals.first, s.pair != model.pair {
+            model.select(pair: s.pair)
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
         for s in Screen.allCases {
             screen = s
             if s == .live, model.engineState == .running {

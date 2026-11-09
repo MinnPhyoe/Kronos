@@ -7,6 +7,12 @@ on:
     branches: [claude/sweet-hypatia-7v3qxy]
     paths: ["mac-app/**", "forex-app/**", ".github/workflows/fxdesk-mac.yml", "!mac-app/screenshots/**"]
   workflow_dispatch:
+    inputs:
+      prices:
+        description: "Prices for the run: simulated (the engine's built-in market) or yahoo (often refused from GitHub's servers)"
+        default: simulated
+        type: choice
+        options: [simulated, yahoo]
 
 concurrency:
   group: fxdesk-mac-${{ github.ref }}
@@ -51,9 +57,18 @@ jobs:
       - name: Run FX Desk like a user would
         env:
           TOUR: ${{ runner.temp }}/tour
+          PRICES: ${{ inputs.prices || 'simulated' }}
         run: |
           mkdir -p ~/Applications "$TOUR" shots
           ln -sfn "$GITHUB_WORKSPACE" ~/Applications/Kronos
+          if [ "$PRICES" = simulated ]; then
+            # Yahoo refuses GitHub's servers (HTTP 429), so use the engine's simulated market for this run.
+            # The process environment wins over .env. The market starts before today's London open and
+            # runs 60 times faster, so the opening ranges form while the app is open.
+            export FOREX_PROVIDER=simulated FOREX_SIM_SPEED=60 FOREX_SIM_START="$(date -u +%Y-%m-%dT07:35:00Z)"
+            export FXDESK_TOUR_WAIT=150
+          fi
+          echo "prices: $PRICES"
           FXDESK_TOUR_DIR="$TOUR" ./mac-app/build/Debug/FXDesk.app/Contents/MacOS/FXDesk > app.log 2>&1 &
           APP=$!
           sleep 40

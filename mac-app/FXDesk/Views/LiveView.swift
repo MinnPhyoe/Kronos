@@ -48,14 +48,14 @@ struct LiveView: View {
                     .background(Capsule().fill(Theme.card))
                 }
                 ChartView(bridge: model.chart)
-                    .frame(minWidth: 520, minHeight: 380)
+                    .frame(minWidth: 460, minHeight: 360)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.line, lineWidth: 1))
             }
             .padding(16)
             .background(Theme.bg)
             AnalysisPanel()
-                .frame(minWidth: 340, idealWidth: 380, maxWidth: 480)
+                .frame(minWidth: 300, idealWidth: 370, maxWidth: 480)
                 .background(Theme.bg)
         }
         .background(Theme.bg)
