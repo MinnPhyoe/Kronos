@@ -13,28 +13,33 @@ struct LocalAddress: Identifiable, Equatable {
 
 /// This Mac's addresses on your home network and on Tailscale.
 enum NetworkInfo {
+    /// Number addresses on the home network first (they work whenever the phone is on the same Wi-Fi),
+    /// then this Mac's name on the home network (it stays the same if the number changes), then Tailscale.
     static func addresses() -> [LocalAddress] {
-        var result: [LocalAddress] = []
-        if let name = SCDynamicStoreCopyLocalHostName(nil) {
-            result.append(LocalAddress(host: (name as String) + ".local", kind: "home network"))
-        }
+        var found: [LocalAddress] = []
         var list: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&list) == 0 else { return result }
-        defer { freeifaddrs(list) }
-        var cursor = list
-        while let entry = cursor {
-            defer { cursor = entry.pointee.ifa_next }
-            let flags = Int32(bitPattern: entry.pointee.ifa_flags)
-            guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0, let sa = entry.pointee.ifa_addr,
-                  sa.pointee.sa_family == sa_family_t(AF_INET) else { continue }
-            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            guard getnameinfo(sa, socklen_t(sa.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0
-            else { continue }
-            let ip = host.withUnsafeBufferPointer { b in String(cString: b.baseAddress!) }
-            if let kind = kind(of: ip), !result.contains(where: { a in a.host == ip }) {
-                result.append(LocalAddress(host: ip, kind: kind))
+        if getifaddrs(&list) == 0 {
+            var cursor = list
+            while let entry = cursor {
+                defer { cursor = entry.pointee.ifa_next }
+                let flags = Int32(bitPattern: entry.pointee.ifa_flags)
+                guard (flags & IFF_UP) != 0, (flags & IFF_LOOPBACK) == 0, let sa = entry.pointee.ifa_addr,
+                      sa.pointee.sa_family == sa_family_t(AF_INET) else { continue }
+                var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                guard getnameinfo(sa, socklen_t(sa.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0
+                else { continue }
+                let ip = host.withUnsafeBufferPointer { b in String(cString: b.baseAddress!) }
+                if let kind = kind(of: ip), !found.contains(where: { a in a.host == ip }) {
+                    found.append(LocalAddress(host: ip, kind: kind))
+                }
             }
+            freeifaddrs(list)
         }
+        var result = found.filter { a in a.kind == "home network" }
+        if let name = SCDynamicStoreCopyLocalHostName(nil) {
+            result.append(LocalAddress(host: (name as String) + ".local", kind: "home network name"))
+        }
+        result += found.filter { a in a.kind == "Tailscale" }
         return result
     }
 
