@@ -73,7 +73,8 @@ def _slim_forecast(f: dict) -> dict:
     return {k: v for k, v in f.items() if k not in ("paths", "times")}
 
 
-def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health: Health | None = None) -> FastAPI:
+def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health: Health | None = None,
+               forecaster=None, engine: bool = True) -> FastAPI:
     health = health or Health()
 
     async def _status_listener():
@@ -200,6 +201,19 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
         rows = store.get_signals(status="closed", pair=pair.upper() if pair else None,
                                  shown=None if include_filtered else True, limit=limit)
         return {"signals": rows, "stats": stats_of(rows)}
+
+    @app.get("/signals/{sid}/tradingview")
+    def signal_tradingview(sid: str, hold_minutes: int = 120, uid: str = Depends(user)):
+        from ..tradingview import pine_for_signal, tradingview_url
+        s = store.get_signal(sid)
+        if not s:
+            raise HTTPException(404, "no such signal")
+        try:
+            script = pine_for_signal(s, hold_minutes)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"script": script, "tradingview_url": tradingview_url(s["pair"]),
+                "how": "In TradingView open Pine Editor, paste the script and press Add to chart."}
 
     @app.get("/signals/{sid}")
     def signal(sid: str, uid: str = Depends(user)):
@@ -340,6 +354,12 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
         @app.get("/manifest.webmanifest")
         def manifest():
             return FileResponse(str(app_dir / "manifest.webmanifest"), media_type="application/manifest+json")
+
+    if engine:
+        # on-demand Kronos and Day Trader analysis for any pair and timeframe (the Mac app's Analyse button)
+        from ..engine_server import create_engine_app
+        app.mount("/engine", create_engine_app(cfg, forecaster=forecaster,
+                                               token=cfg.api_token if cfg.auth_mode == "token" else ""))
 
     @app.exception_handler(ValueError)
     async def value_error(_, exc):

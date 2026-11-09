@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* matches the app: black canvas, white and grey candles, colour only for the trade's levels */
+  :root { --bg: #1c1c1f; --text: #9e9ea6; --grid: #26262b; --up: #f5f5f7; --down: #5c5c66; --wick: #b4b4bc;
+          --entry: #1ea7ff; --stop: #ff453a; --target: #30d158; --band: #9b7bff; --range: #ff7a59; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; font: 12px -apple-system, system-ui, sans-serif; }
+  #chart { position: absolute; inset: 0; }
+  #legend { position: absolute; left: 14px; top: 12px; z-index: 5; color: var(--text); font: 12px ui-monospace, Menlo, monospace;
+            pointer-events: none; }
+  #empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text);
+           font: 600 15px ui-rounded, -apple-system, system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<div id="legend"></div>
+<div id="empty">Waiting for prices from the engine…</div>
+<script src="lightweight-charts.standalone.production.js"></script>
+<script>
+"use strict";
+// The Mac app drives this page through window.fx.*; it never loads anything from the internet.
+const LW = window.LightweightCharts;
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function rgba(hex, a) { const n = parseInt(hex.replace("#", ""), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+
+class Overlay {   // forecast band, session ranges and the trade's profit/loss zones, under the candles
+  constructor() { this.band = []; this.ranges = []; this.zones = null; }
+  attached(p) { this.chart = p.chart; this.series = p.series; this.req = p.requestUpdate; }
+  detached() { this.chart = null; }
+  refresh() { this.req && this.req(); }
+  updateAllViews() {}
+  paneViews() {
+    const self = this;
+    return [{ zOrder: () => "bottom", renderer: () => ({ draw(target) {
+      if (!self.chart) return;
+      const ts = self.chart.timeScale(), s = self.series;
+      target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+        const x = (t) => ts.timeToCoordinate(t), y = (p) => s.priceToCoordinate(p);
+        for (const r of self.ranges) {
+          const x1 = x(r.start); let x2 = x(r.end); const y1 = y(r.high), y2 = y(r.low);
+          if (x1 === null || y1 === null || y2 === null) continue;
+          if (x2 === null) x2 = mediaSize.width;
+          ctx.fillStyle = rgba(css("--range"), 0.12); ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+          ctx.setLineDash([4, 3]); ctx.strokeStyle = rgba(css("--range"), 0.8); ctx.strokeRect(x1 + .5, y1 + .5, x2 - x1 - 1, y2 - y1 - 1);
+          ctx.setLineDash([]); ctx.fillStyle = css("--range"); ctx.font = "600 11px ui-rounded, -apple-system, sans-serif"; ctx.fillText(r.label, x1 + 3, y1 - 5);
+        }
+        const z = self.zones;
+        if (z) {
+          let x1 = x(z.start); let x2 = z.end ? x(z.end) : null;
+          if (x1 === null) x1 = 0;
+          if (x2 === null) x2 = mediaSize.width;
+          const ye = y(z.entry), ys = y(z.stop), yt = y(z.target);
+          if (ye !== null && ys !== null && yt !== null) {
+            ctx.fillStyle = rgba(css("--target"), 0.16); ctx.fillRect(x1, Math.min(ye, yt), x2 - x1, Math.abs(yt - ye));
+            ctx.fillStyle = rgba(css("--stop"), 0.16); ctx.fillRect(x1, Math.min(ye, ys), x2 - x1, Math.abs(ys - ye));
+          }
+        }
+        const top = [], bot = [];
+        for (const p of self.band) { const xx = x(p.t), a = y(p.p90), b = y(p.p10); if (xx === null || a === null || b === null) continue; top.push([xx, a]); bot.push([xx, b]); }
+        if (top.length > 1) {
+          ctx.beginPath(); top.forEach(([a, b], i) => i ? ctx.lineTo(a, b) : ctx.moveTo(a, b));
+          for (let i = bot.length - 1; i >= 0; i--) ctx.lineTo(bot[i][0], bot[i][1]);
+          ctx.closePath(); ctx.fillStyle = rgba(css("--band"), 0.16); ctx.fill();
+        }
+      });
+    } }) }];
+  }
+}
+
+const chart = LW.createChart(document.getElementById("chart"), {
+  autoSize: true, layout: { attributionLogo: true, fontSize: 11 },
+  rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 6 },
+  crosshair: { mode: LW.CrosshairMode.Normal },
+  localization: { timeFormatter: (t) => new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) },
+});
+const candles = chart.addCandlestickSeries({ priceLineVisible: true });
+const median = chart.addLineSeries({ lineWidth: 2, lineStyle: LW.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+const overlay = new Overlay();
+candles.attachPrimitive(overlay);
+let bars = [], digits = 5, priceLines = [], medianCount = 0;
+
+function theme() {
+  chart.applyOptions({ layout: { background: { type: "solid", color: css("--bg") }, textColor: css("--text") },
+    grid: { vertLines: { color: css("--grid") }, horzLines: { color: css("--grid") } } });
+  candles.applyOptions({ upColor: css("--up"), downColor: css("--down"), borderUpColor: css("--up"), borderDownColor: css("--down"),
+    wickUpColor: css("--wick"), wickDownColor: css("--wick") });
+  median.applyOptions({ color: css("--band") });
+  overlay.refresh();
+}
+theme();
+
+chart.subscribeCrosshairMove((p) => {
+  const b = p && p.time !== undefined && p.seriesData ? p.seriesData.get(candles) : bars[bars.length - 1];
+  document.getElementById("legend").textContent = b && b.open !== undefined
+    ? `O ${b.open.toFixed(digits)}  H ${b.high.toFixed(digits)}  L ${b.low.toFixed(digits)}  C ${b.close.toFixed(digits)}` : "";
+});
+
+window.fx = {
+  setInstrument(d) {
+    digits = d;
+    const f = { type: "price", precision: d, minMove: Math.pow(10, -d) };
+    candles.applyOptions({ priceFormat: f }); median.applyOptions({ priceFormat: f });
+  },
+  setCandles(rows) {                          // [[time, open, high, low, close], ...]
+    bars = rows.map((r) => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] }));
+    candles.setData(bars);
+    document.getElementById("empty").style.display = bars.length ? "none" : "grid";
+    const n = bars.length + medianCount;
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 150), to: n + 4 });
+  },
+  updateCandle(r) {                           // a closed candle, or the forming one
+    const b = { time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] };
+    const last = bars[bars.length - 1];
+    if (last && b.time < last.time) return;
+    if (last && last.time === b.time) bars[bars.length - 1] = b; else bars.push(b);
+    candles.update(b);
+  },
+  tick(time, price, tfSec) {
+    const t = Math.floor(time / tfSec) * tfSec, last = bars[bars.length - 1];
+    if (!last || t < last.time) return;
+    const b = t > last.time ? { time: t, open: price, high: price, low: price, close: price }
+      : { ...last, high: Math.max(last.high, price), low: Math.min(last.low, price), close: price };
+    if (t > last.time) bars.push(b); else bars[bars.length - 1] = b;
+    candles.update(b);
+  },
+  setForecast(f) {                            // {baseTime, lastClose, band: [{t, p10, p50, p90}]} or null
+    if (!f || !f.band || !f.band.length) { overlay.band = []; medianCount = 0; median.setData([]); overlay.refresh(); return; }
+    const pts = [{ t: f.baseTime, p10: f.lastClose, p50: f.lastClose, p90: f.lastClose }, ...f.band];
+    median.setData(pts.map((p) => ({ time: p.t, value: p.p50 })));
+    medianCount = pts.length;
+    overlay.band = pts; overlay.refresh();
+  },
+  setRanges(list) { overlay.ranges = list || []; overlay.refresh(); },   // [{start, end, high, low, label}]
+  setLevels(l) {                              // {side, entry, stop, tp1, tp2, start, end, waiting} or null
+    window.fx._levels = l;
+    for (const p of priceLines) candles.removePriceLine(p);
+    priceLines = [];
+    overlay.zones = null;
+    if (l) {
+      const style = l.waiting ? LW.LineStyle.Dashed : LW.LineStyle.Solid;
+      const add = (price, color, title, st) => priceLines.push(candles.createPriceLine({ price, color, title, lineWidth: 2, lineStyle: st, axisLabelVisible: true }));
+      add(l.entry, css("--entry"), l.side === "sell" ? "Sell" : "Buy", style);
+      add(l.stop, css("--stop"), "SL", style);
+      add(l.tp1, css("--target"), "TP1", style);
+      if (l.tp2 && l.tp2 !== l.tp1) add(l.tp2, css("--target"), "TP2", LW.LineStyle.Dotted);
+      overlay.zones = { start: l.start, end: l.end, entry: l.entry, stop: l.stop, target: l.tp2 || l.tp1 };
+    }
+    overlay.refresh();
+  },
+};
+window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.fxReady && window.webkit.messageHandlers.fxReady.postMessage("ready");
+</script>
+</body>
+</html>

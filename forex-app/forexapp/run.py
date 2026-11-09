@@ -61,10 +61,10 @@ async def run_feed(cfg, store, bus):
     await feed.run()
 
 
-async def run_model(cfg, store, bus):
+async def run_model(cfg, store, bus, fc=None):
     from .models.kronos_service import make_forecaster
     from .models.service import ModelService
-    fc = make_forecaster(cfg)
+    fc = fc or make_forecaster(cfg)
     log.info("model: %s", getattr(fc, "name", cfg.model_backend))
     await ModelService(cfg, store, bus, fc).run()
 
@@ -112,10 +112,10 @@ def _lan_ip() -> str | None:
         return None
 
 
-async def run_api(cfg, store, bus, open_browser=False):
+async def run_api(cfg, store, bus, open_browser=False, fc=None):
     import uvicorn
     from .api.server import create_app
-    app = create_app(cfg, store, bus)
+    app = create_app(cfg, store, bus, forecaster=fc)
     server = uvicorn.Server(uvicorn.Config(app, host=cfg.host, port=cfg.port, log_level="warning"))
     local = "http://localhost:%d" % cfg.port
     lines = ["", "  FX app is running:  %s" % local]
@@ -141,8 +141,12 @@ async def main_async(which: str, cfg: Config, open_browser: bool = False):
     bus = make_bus(cfg.redis_url)
     if which != "all" and cfg.redis_url is None:
         log.warning("running '%s' alone without FOREX_REDIS_URL: it cannot talk to the other services", which)
-    runners = {"feed": run_feed, "model": run_model, "strategy": run_strategy,
-               "api": lambda c, s, b: run_api(c, s, b, open_browser)}
+    shared = None
+    if which == "all":                      # one Kronos in memory, used by the model service and on-demand analysis
+        from .models.kronos_service import make_forecaster
+        shared = make_forecaster(cfg)
+    runners = {"feed": run_feed, "model": lambda c, s, b: run_model(c, s, b, shared), "strategy": run_strategy,
+               "api": lambda c, s, b: run_api(c, s, b, open_browser, shared)}
     names = list(runners) if which == "all" else [which]
     # the API and the strategy subscribe before the feed starts publishing
     order = sorted(names, key=lambda n: {"api": 0, "strategy": 1, "model": 2, "feed": 3}[n])
