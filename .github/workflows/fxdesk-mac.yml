@@ -5,7 +5,7 @@ name: FX Desk on a Mac
 on:
   push:
     branches: [claude/sweet-hypatia-7v3qxy]
-    paths: ["mac-app/**", "forex-app/**", ".github/workflows/fxdesk-mac.yml", "!mac-app/screenshots/**", "!**/*.md"]
+    paths: ["mac-app/**", "forex-app/**", ".github/workflows/fxdesk-mac.yml", "!mac-app/screenshots/**", "!**/*.md", "!forex-app/scripts/analyse_today.py"]
   workflow_dispatch:
     inputs:
       prices:

@@ -1,0 +1,51 @@
+name: Analyse a pair today
+
+# Runs forex-app/scripts/analyse_today.py on a GitHub server, which can reach the price feeds and the
+# Kronos model, and shows the report on the run's summary page. Analysis only: it never places a trade.
+on:
+  push:
+    branches: [claude/sweet-hypatia-7v3qxy]
+    paths: ["forex-app/scripts/analyse_today.py", ".github/workflows/analyse.yml"]
+  workflow_dispatch:
+    inputs:
+      pair:
+        description: "Pair, for example EURUSD"
+        default: EURUSD
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the engine and Kronos (CPU)
+        working-directory: forex-app
+        run: |
+          pip install -q -r requirements.txt
+          pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -q einops==0.8.1 huggingface_hub==0.33.1 safetensors==0.6.2 tqdm
+
+      - name: Analyse
+        working-directory: forex-app
+        env:
+          PAIR: ${{ inputs.pair || 'EURUSD' }}
+        run: python scripts/analyse_today.py --pair "$PAIR" --out ../report.md --json ../report.json
+
+      - name: Show the report on the summary page
+        if: always()
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis
+          path: report.*
+          if-no-files-found: warn
