@@ -153,6 +153,13 @@ def calendar(client: httpx.Client) -> list[dict]:
         return []
 
 
+def market_open(now: dt.datetime | None = None) -> bool:
+    """Forex trades from Sunday 22:00 to Friday 22:00 UTC (roughly; it shifts an hour with US summer time)."""
+    now = now or dt.datetime.now(UTC)
+    wd, h = now.weekday(), now.hour
+    return not (wd == 5 or (wd == 6 and h < 22) or (wd == 4 and h >= 22))
+
+
 # ---------------------------------------------------------------- the report
 def fmt(x, d=5):
     return "–" if x is None else ("%.*f" % (d, x))
@@ -185,10 +192,17 @@ def main() -> int:
             five = []
             for name, fn in (("Yahoo Finance", yahoo_5m), ("Dukascopy", dukascopy_5m), ("Kraken", kraken_5m)):
                 try:
-                    five, source = fn(pair, client), name
-                    break
+                    rows = fn(pair, client)
                 except Exception as e:
                     errors.append("%s: %s" % (name, e))
+                    continue
+                stale = market_open() and time.time() - rows[-1]["time"] > 3 * 3600
+                if stale:      # a source that answers with old data is no use for today
+                    errors.append("%s: its newest candle is from %s UTC" % (
+                        name, dt.datetime.fromtimestamp(rows[-1]["time"], UTC).strftime("%a %H:%M")))
+                    continue
+                five, source = rows, name
+                break
             if not five:
                 print("Could not get prices:", "; ".join(errors))
                 return 2
