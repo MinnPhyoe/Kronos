@@ -63,8 +63,23 @@ def yahoo_5m(pair: str, client: httpx.Client) -> list[dict]:
     raise RuntimeError("Yahoo: %s" % last)
 
 
+def kraken_5m(pair: str, client: httpx.Client) -> list[dict]:
+    """Kraken's public market-data API (spot EUR/USD): the last 720 five-minute candles, about 2.5 days.
+    Enough for Kronos and today's opening ranges; short for the Time Machine, which replays history."""
+    r = client.get("https://api.kraken.com/0/public/OHLC", params={"pair": pair, "interval": 5})
+    d = r.json() if r.status_code == 200 else {}
+    if not d.get("result") or d.get("error"):
+        raise RuntimeError("Kraken: HTTP %d %s" % (r.status_code, d.get("error")))
+    key = next(k for k in d["result"] if k != "last")
+    return [{"time": int(c[0]), "open": float(c[1]), "high": float(c[2]), "low": float(c[3]), "close": float(c[4])}
+            for c in d["result"][key]]
+
+
 def _duka_get(client: httpx.Client, url: str) -> bytes:
-    r = client.get(url)
+    try:
+        r = client.get(url)
+    except httpx.HTTPError:
+        return b""
     if r.status_code != 200 or not r.content:
         return b""
     try:
@@ -80,13 +95,17 @@ def dukascopy_5m(pair: str, client: httpx.Client, days: int = 60) -> list[dict]:
     base = "https://datafeed.dukascopy.com/datafeed/%s/%04d/%02d/%02d/"
     now = dt.datetime.now(UTC)
     minutes: dict[int, list] = {}
+    tried = 0
     for back in range(days, -1, -1):
+        if tried >= 5 and not minutes:
+            raise RuntimeError("Dukascopy: no answer")    # it is not answering from here: don't keep asking
         day = (now - dt.timedelta(days=back)).date()
         if day.weekday() == 5:                       # Saturday: closed
             continue
         start = int(dt.datetime(day.year, day.month, day.day, tzinfo=UTC).timestamp())
         url = base % (pair, day.year, day.month - 1, day.day)
         raw = b"" if back == 0 else _duka_get(client, url + "BID_candles_min_1.bi5")
+        tried += 1
         if raw:
             for off in range(0, len(raw) - 23, 24):
                 t, a, b, c, d, v = struct.unpack(">IIIIIf", raw[off:off + 24])
@@ -164,7 +183,7 @@ def main() -> int:
             five, source = json.loads(Path(args.candles_file).read_text()), "file"
         else:
             five = []
-            for name, fn in (("Yahoo Finance", yahoo_5m), ("Dukascopy", dukascopy_5m)):
+            for name, fn in (("Yahoo Finance", yahoo_5m), ("Dukascopy", dukascopy_5m), ("Kraken", kraken_5m)):
                 try:
                     five, source = fn(pair, client), name
                     break
@@ -234,6 +253,8 @@ def main() -> int:
     L.append("# %s today: %s, as of %s UTC" % (disp, asof.strftime("%a %d %b %Y"), asof.strftime("%H:%M")))
     L.append("")
     L.append("Prices: %s, 5-minute candles. Analysis only; Kronos and Time Machine numbers are estimates, not win rates." % source)
+    if source == "Kraken":
+        L.append("Kraken's public data covers only the last 2.5 days, so the Time Machine has little history to replay today.")
     if errors:
         L.append("(%s)" % "; ".join(errors))
     L.append("")
