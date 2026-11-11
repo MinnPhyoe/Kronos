@@ -119,11 +119,28 @@ def test_orb_from_one_minute_candles():
         mins.append({"time": t, "open": p, "high": max(p, c) + 0.00002, "low": min(p, c) - 0.00002, "close": c})
         p = c
     with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
-        r = c.post("/orb", json={"pair": "EURUSD", "candles": mins, "sessions": ["london"]}).json()
+        at_trigger = [m for m in mins if m["time"] < ts("2026-11-09 08:20")]      # up to the breakout candle's close
+        r = c.post("/orb", json={"pair": "EURUSD", "candles": at_trigger, "sessions": ["london"]}).json()
         s = r["setups"][0]
         assert s["session"] == "london" and s["status"] == "triggered" and s["entry_state"]["side"] == "buy"
         plan = s["plans"][0]
         assert plan["stop"] < plan["entry"] < plan["tp1"]
+        assert "outcome" not in s
+        # an hour later price has climbed through the target: the setup is finished, not a trade any more
+        s = c.post("/orb", json={"pair": "EURUSD", "candles": mins, "sessions": ["london"]}).json()["setups"][0]
+        assert s["status"] == "closed" and s["outcome"]["result"] == "target"
+        assert ts("2026-11-09 08:20") < s["outcome"]["time"] <= ts("2026-11-09 09:30")
+
+
+def test_first_touch_counts_the_stop_when_one_candle_touches_both():
+    from forexapp.data.candles import Candle
+    from forexapp.engine_server import first_touch
+    plan = {"side": "sell", "stop": 1.1030, "tp1": 1.0990}
+    calm = Candle("EURUSD", "5m", 600, 1.1010, 1.1020, 1.1000, 1.1010)
+    wild = Candle("EURUSD", "5m", 900, 1.1010, 1.1035, 1.0985, 1.1000)
+    assert first_touch([calm], 600, 900, plan) == (None, None)
+    assert first_touch([calm, wild], 600, 1200, plan) == ("stop", 1200)
+    assert first_touch([Candle("EURUSD", "5m", 600, 1.1, 1.1005, 1.0989, 1.0995)], 600, 900, plan) == ("target", 900)
 
 
 def test_token_and_client_round_trip():
@@ -230,7 +247,7 @@ def test_unverifiable_currency_blocks_in_the_day_trader_check():
 
 
 def test_day_trader_setups_join_and_agreement_is_shown():
-    orb = _orb_minutes(ts("2026-11-05 20:00"), ts("2026-11-06 09:00"), ts("2026-11-06 08:15"))
+    orb = _orb_minutes(ts("2026-11-05 20:00"), ts("2026-11-06 08:20"), ts("2026-11-06 08:15"))   # up to the breakout
     body = _best_body(include_orb=True, sessions=["london"])
     body["markets"][0]["orb_candles"] = orb
     with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
@@ -240,3 +257,12 @@ def test_day_trader_setups_join_and_agreement_is_shown():
         assert dtr[0]["checks"]["obsidian_risk"]["verdict"] == "NOT CHECKED" and not dtr[0]["eligible"]
         assert "OBSIDIAN: London order block" in dtr[0]["agrees_with"]
         assert r["counts"]["candidates"] == 3
+
+
+def test_a_breakout_that_already_hit_its_target_is_not_offered_again():
+    orb = _orb_minutes(ts("2026-11-05 20:00"), ts("2026-11-06 09:30"), ts("2026-11-06 08:15"))  # climbs on and on
+    body = _best_body(include_orb=True, sessions=["london"])
+    body["markets"][0]["orb_candles"] = orb
+    with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
+        r = c.post("/best", json=body).json()
+        assert not [x for x in r["ranked"] if x["source"] == "Day Trader"]

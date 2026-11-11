@@ -369,6 +369,11 @@ def create_engine_app(cfg: Config | None = None, forecaster=None, token: str | N
                         plans.append({"side": side, "error": str(e)})
                 item["plans"] = plans
                 item["entry_window"] = [w.range_end, w.expiry]
+                if es.status == "triggered" and plans and "error" not in plans[0]:
+                    hit, when = first_touch(five, es.trigger_time, now, plans[0])
+                    if hit:                              # already finished: not a trade any more
+                        item["status"] = "closed"
+                        item["outcome"] = {"result": hit, "time": when, "time_iso": iso(when)}
             out.append(item)
         return out, five, now
 
@@ -394,6 +399,24 @@ def create_engine_app(cfg: Config | None = None, forecaster=None, token: str | N
         return choose_best(req, evaluate_plan, orb_setups)
 
     return app
+
+
+def first_touch(five: list, since: int | None, until: int, plan: dict) -> tuple:
+    """After a breakout triggered, did price reach the target (TP1) or the stop first? -> ("target"|"stop", time)
+    or (None, None). If one candle touches both, it counts as the stop: the cautious reading."""
+    if since is None:
+        return None, None
+    buy = plan["side"] == "buy"
+    for c in five:
+        if c.open_time < since or c.close_time > until:
+            continue
+        stop = c.low <= plan["stop"] if buy else c.high >= plan["stop"]
+        target = c.high >= plan["tp1"] if buy else c.low <= plan["tp1"]
+        if stop:
+            return "stop", c.close_time
+        if target:
+            return "target", c.close_time
+    return None, None
 
 
 def choose_best(req: "BestReq", evaluate_plan, orb_setups) -> dict:
@@ -425,6 +448,8 @@ def choose_best(req: "BestReq", evaluate_plan, orb_setups) -> dict:
             rates.setdefault(pair, five[-1].close)
             latest = max(latest, now_orb)
             for s in setups:
+                if s.get("outcome"):                     # it already hit its target or stop
+                    continue
                 for p in s.get("plans", []):
                     if "error" in p:
                         continue

@@ -278,6 +278,13 @@ def main() -> int:
         if es.get("side"):
             t = dt.datetime.fromtimestamp(es["trigger_time"], UTC).strftime("%H:%M") if es.get("trigger_time") else "?"
             line += "; a 5-minute candle closed %s it at %s UTC (%s)" % ("above" if es["side"] == "buy" else "below", t, fmt(es.get("price"), d))
+        plan = next((x for x in s.get("plans", []) if "error" not in x), None)
+        if plan and es.get("side"):
+            line += ". Plan: %s at %s, stop %s, target %s" % (plan["side"].upper(), fmt(plan["entry"], d), fmt(plan["stop"], d), fmt(plan["tp1"], d))
+        out_ = s.get("outcome")
+        if out_:
+            line += ". **Then it hit its %s at %s UTC**" % ("target" if out_["result"] == "target" else "stop",
+                                                          dt.datetime.fromtimestamp(out_["time"], UTC).strftime("%H:%M"))
         L.append(line + ".")
     if "error" in orb:
         L.append("- (opening ranges: %s)" % orb["error"])
@@ -322,8 +329,15 @@ def main() -> int:
                             pct(tmc.get("odds")), pct(tmc.get("break_even")),
                             ("**Passed every check here** (cautious estimate %+.2f R)." % c["score_R"]) if ok
                             else "Not taken: " + "; ".join(reasons or ["the cautious estimate is not above zero"])))
+        if when == "now":
+            for st in orb.get("setups", []):
+                if st.get("outcome"):
+                    lines.insert(0, "  - %s %s opening-range breakout: finished, it already hit its %s."
+                                 % ((st.get("entry_state") or {}).get("side", "").upper(), session_of(st["label"]),
+                                    st["outcome"]["result"]))
         head = ("%d setup passed" % len(passed) if len(passed) == 1 else "%d setups passed" % len(passed)) if passed \
-            else ("nothing passed" if lines else "no setup to check")
+            else ("nothing passed" if any("finished" not in x and "window has closed" not in x for x in lines)
+                  else "no setup is open")
         L.append("- **%s**: %s." % (when[0].upper() + when[1:], head))
         L.extend(lines)
     todays = [e for e in events if str(e.get("date", "")).startswith(asof.strftime("%Y-%m-%d")) and e.get("country") in ("USD", "EUR")]
