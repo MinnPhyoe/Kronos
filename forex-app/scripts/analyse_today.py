@@ -354,11 +354,17 @@ def main() -> int:
                   else "no setup is open")
         L.append("- **%s**: %s." % (when[0].upper() + when[1:], head))
         L.extend(lines)
-    todays = [e for e in events if str(e.get("date", "")).startswith(asof.strftime("%Y-%m-%d")) and e.get("country") in ("USD", "EUR")]
-    L.append("## News today (USD and EUR)")
+    def utc_of(e):                                   # the calendar gives New York times with their offset
+        try:
+            return dt.datetime.fromisoformat(str(e.get("date"))).astimezone(UTC)
+        except ValueError:
+            return None
+
+    todays = [e for e in events if e.get("country") in ("USD", "EUR") and utc_of(e) and utc_of(e).date() == asof.date()]
+    L.append("## News today (USD and EUR, times in UTC)")
     if todays:
-        for e in todays:
-            L.append("- %s %s %s (%s impact)" % (str(e.get("date", ""))[11:16], e.get("country"), e.get("title"), e.get("impact")))
+        for e in sorted(todays, key=utc_of):
+            L.append("- %s %s %s (%s impact)" % (utc_of(e).strftime("%H:%M"), e.get("country"), e.get("title"), e.get("impact")))
     else:
         L.append("- %s" % ("Nothing listed for USD or EUR today." if events else "The calendar could not be fetched."))
     L.append("")
