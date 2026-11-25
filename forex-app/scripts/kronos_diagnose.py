@@ -47,10 +47,11 @@ def dukascopy_1m(pair: str, days: int) -> pd.DataFrame:
                     if r.status_code == 200 and r.content:
                         raw = lzma.decompress(r.content)
                         break
+                    print("  %s -> HTTP %d" % (day, r.status_code), flush=True)
                     if r.status_code == 404:
                         break
-                except Exception:
-                    pass
+                except Exception as e:
+                    print("  %s -> %s" % (day, str(e)[:80]), flush=True)
                 time.sleep(2 + attempt)
             start = int(dt.datetime(day.year, day.month, day.day, tzinfo=UTC).timestamp())
             for off in range(0, len(raw) - 23, 24):
@@ -60,6 +61,15 @@ def dukascopy_1m(pair: str, days: int) -> pd.DataFrame:
             print("day %s: %d minutes" % (day, len(raw) // 24), flush=True)
     df = pd.DataFrame(rows, columns=["time", "open", "high", "low", "close", "volume"]).sort_values("time")
     return df
+
+
+def kraken_5m(pair: str) -> pd.DataFrame:
+    """Kraken's public API: the last 720 five-minute candles, with traded volume."""
+    r = httpx.get("https://api.kraken.com/0/public/OHLC", params={"pair": pair, "interval": 5}, timeout=30)
+    d = r.json()
+    key = next(k for k in d["result"] if k != "last")
+    rows = [(int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[6])) for c in d["result"][key]]
+    return pd.DataFrame(rows, columns=["time", "open", "high", "low", "close", "volume"])
 
 
 def to_5m(m: pd.DataFrame) -> pd.DataFrame:
@@ -93,15 +103,21 @@ def main() -> int:
     pair, H = args.pair, args.horizon
     pip = 0.01 if pair.endswith("JPY") else 0.0001
 
-    five = to_5m(dukascopy_1m(pair, args.days))
-    print("5-minute candles:", len(five), flush=True)
+    m = dukascopy_1m(pair, args.days)
+    source = "Dukascopy"
+    if len(m) > 5000:
+        five = to_5m(m)
+    else:
+        five, source = kraken_5m(pair), "Kraken"
+        five = five.iloc[:-1]                          # the last one is still forming
+    print("5-minute candles from %s: %d" % (source, len(five)), flush=True)
 
     # cutoffs: spread over the last few trading days, each with 480 candles before and H continuous after
     idx = [i for i in range(480, len(five) - H - 1) if contiguous(five, i, 480, H)]
     if len(idx) < args.cutoffs:
         print("not enough continuous data")
         return 2
-    picks = [idx[int(k)] for k in np.linspace(len(idx) * 0.35, len(idx) - 1, args.cutoffs)]
+    picks = [idx[int(k)] for k in np.linspace(0 if source == "Kraken" else len(idx) * 0.35, len(idx) - 1, args.cutoffs)]
 
     import torch
     from model import Kronos, KronosPredictor, KronosTokenizer
@@ -150,8 +166,8 @@ def main() -> int:
                                                    c10, c90, s["first_jump"], s["secs"]), flush=True)
 
     L = ["# Kronos-small on %s: forecasts vs. what happened" % pair, "",
-         "%d past moments over the last %d days; %d paths each; forecasting %d five-minute candles (2 hours)."
-         % (len(picks), args.days, args.paths, H), "",
+         "Prices: %s. %d past moments; %d paths each; forecasting %d five-minute candles (2 hours)."
+         % (source, len(picks), args.paths, H), "",
          "| Variant | Error of middle path (pips) | No-change error (pips) | Real price inside 10-90% band | "
          "Band width (pips) | Moved toward window average | First-candle jump (pips) |",
          "|---|---|---|---|---|---|---|"]
