@@ -1,0 +1,31 @@
+name: Kronos diagnosis
+
+# Replays recent history: Kronos' forecasts against what actually happened, under several input variants.
+on:
+  push:
+    branches: [claude/sweet-hypatia-7v3qxy]
+    paths: ["forex-app/scripts/kronos_diagnose.py", ".github/workflows/kronos-diagnose.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Kronos (CPU)
+        run: |
+          pip install -q numpy pandas httpx
+          pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -q einops==0.8.1 huggingface_hub==0.33.1 safetensors==0.6.2 tqdm
+      - name: Diagnose
+        run: python forex-app/scripts/kronos_diagnose.py --pair EURUSD --days 12 --cutoffs 10 --paths 20 --out kronos-diagnosis.md
+      - name: Summary
+        if: always()
+        run: cat kronos-diagnosis.md >> "$GITHUB_STEP_SUMMARY" || true
