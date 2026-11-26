@@ -88,6 +88,22 @@ cards and alerts. Your trade records stay in the Mac app.
 - **Safety:** the engine listens on your network only while this option is on **and** a password is set.
   After several wrong passwords, that device is locked out for a while.
 
+## Grades and Kronos
+
+Every signal that passes the required checks gets a grade:
+
+- **A+**: the Time Machine's odds are at least 10 points above break-even, it averages at least +0.15R a
+  trade, from at least 30 replayed past situations; the risk check has no warnings; the market isn't ranging.
+- **A**: at least 5 points above break-even, and a positive average.
+- **B**: passed the required checks, with a thinner edge.
+
+A grade says how strong the evidence is, not that a trade will win. The website has an **A+ only** filter.
+
+**Kronos is advice only by default.** Replayed against recent EUR/USD (`forex-app/scripts/kronos_diagnose.py`),
+Kronos-small was less accurate than assuming no change, and it pulled its forecasts toward the recent
+average price. It still shows on every signal, labelled as advice. To let it veto signals again, turn on
+**Settings → Kronos must agree**. Only do that after fine-tuning Kronos and rerunning the diagnosis.
+
 ## The two risk engines
 
 1. **Day Trader risk check (in the engine).** It checks size, stop, reward to risk and the session rules. It returns PASS or BLOCK.

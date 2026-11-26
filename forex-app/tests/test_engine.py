@@ -83,7 +83,7 @@ def test_check_passes_a_plan_the_paths_support_and_blocks_one_they_dont():
     last = rows[-1]["close"]
     body = {"pair": "EURUSD", "timeframe": "M15", "candles": rows, "side": "buy", "entry": round(last + 0.0001, 5),
             "stop": round(last - 0.0015, 5), "target": round(last + 0.0017, 5), "horizon": 24, "replays": 500}
-    with TestClient(create_engine_app(Config(), forecaster=Steered(up=27, n_down=3), token="")) as c:
+    with TestClient(create_engine_app(Config(kronos_gate=True), forecaster=Steered(up=27, n_down=3), token="")) as c:
         r = c.post("/check", json=body).json()
         assert r["kronos"]["confidence"] == pytest.approx(0.9) and r["kronos"]["avg_R"] > 0
         assert r["timemachine"]["replays"] == 500 and "verdict" in r["timemachine"]
@@ -92,7 +92,7 @@ def test_check_passes_a_plan_the_paths_support_and_blocks_one_they_dont():
         assert r["blocks"] == (not all(f["ok"] for f in r["filters"]))
         bad = c.post("/check", json={**body, "stop": body["entry"] + 0.001}).status_code
         assert bad == 400
-    with TestClient(create_engine_app(Config(), forecaster=Steered(up=3, n_down=27), token="")) as c:
+    with TestClient(create_engine_app(Config(kronos_gate=True), forecaster=Steered(up=3, n_down=27), token="")) as c:
         r = c.post("/check", json=body).json()
         assert r["blocks"] and r["kronos"]["confidence"] < 0.2
         assert any("forecast paths reach the target" in x for x in r["reasons"])
@@ -208,7 +208,7 @@ def _best_body(**kw):
 
 
 def test_best_is_the_setup_that_passes_both_risk_engines_and_the_forecast():
-    with TestClient(create_engine_app(Config(), forecaster=Steered(up=27, n_down=3), token="")) as c:
+    with TestClient(create_engine_app(Config(kronos_gate=True), forecaster=Steered(up=27, n_down=3), token="")) as c:
         r = c.post("/best", json=_best_body()).json()
         assert r["counts"] == {"candidates": 2, "eligible": 1}
         sell = next(x for x in r["ranked"] if x["side"] == "sell")
@@ -266,3 +266,11 @@ def test_a_breakout_that_already_hit_its_target_is_not_offered_again():
     with TestClient(create_engine_app(Config(), forecaster=Steered(), token="")) as c:
         r = c.post("/best", json=body).json()
         assert not [x for x in r["ranked"] if x["source"] == "Day Trader"]
+
+
+def test_kronos_is_advice_only_by_default():
+    with TestClient(create_engine_app(Config(), forecaster=Steered(up=27, n_down=3), token="")) as c:
+        r = c.post("/best", json=_best_body()).json()
+        sell = next(x for x in r["ranked"] if x["side"] == "sell")
+        assert not any("forecast paths reach the target" in w for w in sell["why_not"])   # Kronos no longer vetoes
+        assert sell["score_R"] == sell["checks"]["timemachine"]["avg_R"]

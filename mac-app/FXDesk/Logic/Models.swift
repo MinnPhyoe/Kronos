@@ -83,7 +83,16 @@ struct FilterItem: Decodable, Identifiable {
     let name: String
     let ok: Bool
     let detail: String?
+    let advisory: Bool?
     var id: String { name }
+}
+
+/// A+ / A / B for a signal that passed every required check: how strong the evidence is, not a promise.
+struct GradeBlock: Decodable {
+    let grade: String
+    let why: [String]?
+    let missing: [String]?
+    let note: String?
 }
 
 struct RiskBlock: Decodable {
@@ -161,8 +170,12 @@ struct Signal: Decodable, Identifiable {
     let userAction: String?
     let explanation: String?
     let digits: Int?
+    let grade: GradeBlock?
+    let kronosGate: Bool?
+    let advice: [String]?
 
     var isActive: Bool { status == "waiting" || status == "triggered" }
+    var isAPlus: Bool { grade?.grade == "A+" }
     var isBuy: Bool { side == "buy" }
 }
 

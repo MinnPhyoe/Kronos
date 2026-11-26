@@ -76,7 +76,9 @@ def _ctx(forecast, history_days=40, **kw):
 
 def test_signal_json_has_the_spec_fields_and_passes():
     f = make_forecast("EURUSD", ts("2026-11-09 08:15"), 1.1016, _paths(26, 3, 1, step=0.0006))
-    sig = build_signal(_ctx(f))
+    ctx = _ctx(f)
+    ctx.cfg.kronos_gate = True                                       # Kronos must agree
+    sig = build_signal(ctx)
     assert SPEC_KEYS <= set(sig)
     assert sig["entry"] == pytest.approx(1.1017)                         # bid close + spread
     assert sig["sl"] < sig["entry"] < sig["tp1"] <= sig["tp2"]
@@ -87,11 +89,34 @@ def test_signal_json_has_the_spec_fields_and_passes():
     assert len(sig["forecast_band"]) == 12 and {"time", "p10", "p50", "p90"} <= set(sig["forecast_band"][0])
 
 
-def test_model_down_marks_signal_unavailable():
-    sig = build_signal(_ctx(None, forecast_error="model timeout"))
+def test_model_down_blocks_only_when_kronos_must_agree():
+    ctx = _ctx(None, forecast_error="model timeout")
+    ctx.cfg.kronos_gate = True
+    sig = build_signal(ctx)
     assert sig["status"] == "filtered" and not sig["shown"]
     assert sig["model"]["available"] is False
     assert any("model unavailable" in r for r in sig["reasons"])
+    sig = build_signal(_ctx(None, forecast_error="model timeout"))      # the default: Kronos is advice only
+    assert sig["kronos_gate"] is False
+    assert not any("model unavailable" in r for r in sig["reasons"])
+    assert any("model unavailable" in r for r in sig["advice"])
+
+
+def test_grade_rules():
+    from forexapp.signals.grade import grade_signal
+    strong = {"passed": True, "risk": {"warnings": []}, "extras": {"regime": {"label": "trending"}},
+              "timemachine": {"odds": 0.64, "break_even": 0.5, "avg_R": 0.28, "pool": 80}}
+    assert grade_signal(strong, False)["grade"] == "A+"
+    assert grade_signal(dict(strong, passed=False), False) is None
+    ok = dict(strong, timemachine={"odds": 0.57, "break_even": 0.5, "avg_R": 0.1, "pool": 80})
+    g = grade_signal(ok, False)
+    assert g["grade"] == "A" and g["missing"]
+    thin = dict(strong, timemachine={"odds": 0.64, "break_even": 0.5, "avg_R": 0.28, "pool": 12})
+    assert grade_signal(thin, False)["grade"] != "A+"
+    ranging = dict(strong, extras={"regime": {"label": "ranging"}})
+    assert grade_signal(ranging, False)["grade"] != "A+"
+    weak = dict(strong, timemachine={"odds": 0.51, "break_even": 0.5, "avg_R": 0.01, "pool": 80})
+    assert grade_signal(weak, False)["grade"] == "B"
 
 
 def test_low_confidence_is_filtered():

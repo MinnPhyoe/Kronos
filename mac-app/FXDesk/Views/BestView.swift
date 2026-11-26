@@ -33,7 +33,7 @@ struct BestView: View {
                     .padding(22)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                Text("A setup counts only if the engine's Day Trader risk check AND your records' risk check pass it, at least 55% of Kronos' paths reach the target first, and the Time Machine agrees. The best is the one with the highest cautious estimate: the lower of the two expected results.")
+                Text("A setup counts only if the engine's Day Trader risk check AND your records' risk check pass it, and the Time Machine (replays of similar past breakouts) expects a profit after costs. A+ setups come first: the Time Machine's odds are at least 10 points above break-even, from at least 30 replays, with no risk warnings and no ranging market. Kronos is advice only unless you turn on \"Kronos must agree\" in Settings.")
                     .font(Theme.body(13))
                     .foregroundStyle(Theme.dim)
                     .fixedSize(horizontal: false, vertical: true)

@@ -124,8 +124,11 @@ def path_outcomes(f: Forecast, side: str, entry: float, stop: float, target: flo
     return out
 
 
-def _filter(filters, name, ok, detail):
-    filters.append({"name": name, "ok": bool(ok), "detail": detail})
+from .grade import grade_signal  # noqa: E402
+
+
+def _filter(filters, name, ok, detail, advisory=False):
+    filters.append({"name": name, "ok": bool(ok), "detail": detail, "advisory": advisory})
 
 
 def build_signal(ctx: SignalContext) -> dict:
@@ -151,8 +154,11 @@ def build_signal(ctx: SignalContext) -> dict:
            "digits": ins.digits, "pip": ins.pip, "disclaimer": DISCLAIMER, "explanation": None,
            "outcome": None, "outcome_r": None, "user_action": None}
 
+    gate = cfg.kronos_gate                     # off: Kronos is shown as advice and never blocks a signal
+    sig["kronos_gate"] = gate
     _filter(filters, "forecast", f is not None,
-            "forecast from %s" % f.model if f else "model unavailable: %s" % (ctx.forecast_error or "no forecast"))
+            "forecast from %s" % f.model if f else "model unavailable: %s" % (ctx.forecast_error or "no forecast"),
+            advisory=not gate)
 
     # Phase 7: volatility forecast
     atr_mult = 1.0
@@ -171,6 +177,9 @@ def build_signal(ctx: SignalContext) -> dict:
     path_extreme = median_reach = None
     if f is not None:
         path_extreme, median_reach = forecast_levels(f, ctx.side, spread, cfg.stop_check_bars, cfg.stop_check_pct)
+        if not gate:                           # Kronos shapes the stop and TP2 only when it must agree
+            kronos_levels = (path_extreme, median_reach)
+            path_extreme = median_reach = None
         sig["forecast_band"] = [{"time": b["time"], "p10": ins.round_price(b["p10"]), "p50": ins.round_price(b["p50"]),
                                  "p90": ins.round_price(b["p90"])} for b in f.band()]
     plan = None
@@ -182,6 +191,16 @@ def build_signal(ctx: SignalContext) -> dict:
         _filter(filters, "plan", True, "stop: %s" % plan.stop_rule)
     except PlanRejected as e:
         _filter(filters, "plan", False, str(e))
+
+    if plan is not None and not gate and f is not None:      # what Kronos would have said, as advice
+        k_extreme, k_reach = kronos_levels
+        sgn = 1 if long else -1
+        _filter(filters, "kronos_stop", not (k_extreme is not None and sgn * (plan.stop - k_extreme) > 0),
+                "Kronos: the forecast paths dip past the stop (%s)" % (ins.round_price(k_extreme) if k_extreme else "–"),
+                advisory=True)
+        _filter(filters, "kronos_reach", not (k_reach is not None and sgn * (k_reach - plan.tp1) < 0),
+                "Kronos: the median forecast path does not reach 1R (half the paths reach %s)"
+                % (ins.round_price(k_reach) if k_reach else "–"), advisory=True)
 
     if plan is not None:
         sig.update({"sl": plan.stop, "tp1": plan.tp1, "tp2": plan.tp2, **plan.pips(ins),
@@ -216,9 +235,9 @@ def build_signal(ctx: SignalContext) -> dict:
             _filter(filters, "confidence", conf is not None and conf >= min_conf,
                     ("%d of %d paths hit TP1 first (%.0f%%; minimum %.0f%%)"
                      % (po["tp_first"], po["entered"], 100 * conf, 100 * min_conf)) if conf is not None
-                    else "no forecast path breaks out of the range")
+                    else "no forecast path breaks out of the range", advisory=not gate)
             _filter(filters, "expectancy", sig["expectancy_r"] is not None and sig["expectancy_r"] > cfg.min_expectancy_r,
-                    "expectancy %s R after costs" % sig["expectancy_r"])
+                    "expectancy %s R after costs" % sig["expectancy_r"], advisory=not gate)
         # Time Machine
         s = SESSIONS[rng.session]
         try:
@@ -229,6 +248,12 @@ def build_signal(ctx: SignalContext) -> dict:
                              s.tz, cfg.tm_replays, cfg.tm_seed)
             sig["timemachine"] = mc
             sig["timemachine_odds"] = mc["odds"]
+            if not gate:                           # the Time Machine's expectancy, after costs, decides instead
+                tm_exp = None if mc.get("avg_R") is None else round(mc["avg_R"] - cost_r, 3)
+                sig["kronos_expectancy_r"] = sig["expectancy_r"]      # kept for reference
+                sig["expectancy_r"] = tm_exp                           # the expectancy that decides
+                _filter(filters, "tm_expectancy", tm_exp is not None and tm_exp > cfg.min_expectancy_r,
+                        "Time Machine expectancy %s R after costs" % tm_exp)
             _filter(filters, "timemachine", mc["odds"] is not None and mc["odds"] >= mc["break_even"],
                     mc["verdict"] + " (seed %d, %d replays)" % (mc["seed"], mc["replays"]))
         except ValueError as e:
@@ -250,12 +275,12 @@ def build_signal(ctx: SignalContext) -> dict:
     if cfg.require_htf_agreement:
         h = ctx.htf_forecast
         if h is None:
-            _filter(filters, "htf", False, "1H forecast unavailable")
+            _filter(filters, "htf", False, "1H forecast unavailable", advisory=not gate)
         else:
             dp = h.direction_prob()
             ok = dp >= 0.5 if long else dp <= 0.5
             extras["htf"] = {"direction_prob": round(dp, 3)}
-            _filter(filters, "htf", ok, "1H forecast: %.0f%% of paths end higher" % (100 * dp))
+            _filter(filters, "htf", ok, "1H forecast: %.0f%% of paths end higher" % (100 * dp), advisory=not gate)
     if ctx.regime is not None:
         extras["regime"] = ctx.regime
         if cfg.regime_filter:
@@ -263,8 +288,10 @@ def build_signal(ctx: SignalContext) -> dict:
     sig["extras"] = extras
 
     sig["filters"] = filters
-    sig["passed"] = all(x["ok"] for x in filters)
-    sig["reasons"] = [x["detail"] for x in filters if not x["ok"]]
+    sig["passed"] = all(x["ok"] for x in filters if not x["advisory"])
+    sig["reasons"] = [x["detail"] for x in filters if not x["ok"] and not x["advisory"]]
+    sig["advice"] = [x["detail"] for x in filters if not x["ok"] and x["advisory"]]
+    sig["grade"] = grade_signal(sig, gate)
     sig["shown"] = sig["passed"]
     if not sig["passed"]:
         sig["status"] = "filtered"

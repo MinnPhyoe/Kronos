@@ -204,3 +204,12 @@ details.more td:first-child { color: var(--text-muted); width: 38%; padding-righ
   .form { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* grades: A+ is the strongest evidence, never a promise */
+.chip.grade { border-color: var(--text-secondary); color: var(--text-primary); }
+.chip.grade-aplus { background: var(--target); border-color: var(--target); color: var(--surface-1); }
+.chip.grade-a { border-color: var(--target); color: var(--target); }
+.grade-box { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.grade-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.reasons li.miss { color: var(--text-secondary); }
+.reasons li.advice { color: var(--text-secondary); font-style: italic; }

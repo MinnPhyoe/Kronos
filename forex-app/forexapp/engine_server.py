@@ -307,11 +307,11 @@ def create_engine_app(cfg: Config | None = None, forecaster=None, token: str | N
             mc = {"error": str(e)}
         conf = po["confidence"]
         filters = [
-            {"name": "kronos_confidence", "ok": conf is not None and conf >= min_conf,
+            {"name": "kronos_confidence", "ok": conf is not None and conf >= min_conf, "advisory": not cfg.kronos_gate,
              "detail": ("%d of %d forecast paths reach the target before the stop (minimum %.0f%%)"
                         % (po["tp_first"], po["entered"], 100 * min_conf)) if conf is not None
              else "no forecast path reaches the entry"},
-            {"name": "kronos_expectancy", "ok": po["avg_R"] is not None and po["avg_R"] > 0,
+            {"name": "kronos_expectancy", "ok": po["avg_R"] is not None and po["avg_R"] > 0, "advisory": not cfg.kronos_gate,
              "detail": "average forecast path result %s R" % (po["avg_R"],)},
             {"name": "timemachine", "ok": bool(mc.get("odds") is not None and mc["odds"] >= mc["break_even"]),
              "detail": mc.get("verdict") or mc.get("error")},
@@ -326,8 +326,10 @@ def create_engine_app(cfg: Config | None = None, forecaster=None, token: str | N
                                       "window_candles": cfg.stop_check_bars},
                        "half_of_paths_reach": round(reach, ins.digits + 1), "target_within_reach": reach_ok},
             "timemachine": {k: v for k, v in mc.items() if k not in ("bands",)},
-            "filters": filters, "blocks": not all(x["ok"] for x in filters),
-            "reasons": [x["detail"] for x in filters if not x["ok"]], "note": NOTE}
+            "filters": filters, "blocks": not all(x["ok"] for x in filters if not x.get("advisory")),
+            "reasons": [x["detail"] for x in filters if not x["ok"] and not x.get("advisory")],
+            "advice": [x["detail"] for x in filters if not x["ok"] and x.get("advisory")],
+            "kronos_gate": cfg.kronos_gate, "note": NOTE}
 
     def orb_setups(pair: str, rows: list, sessions: list, expiry_minutes: int, stop_rule: str,
                    spread_given: float | None, at: float | None) -> tuple:
@@ -497,7 +499,10 @@ def choose_best(req: "BestReq", evaluate_plan, orb_setups) -> dict:
         except ValueError as e:     # cannot verify (e.g. no price to convert to the account currency) -> block
             dt = {"verdict": "BLOCK", "reasons": ["cannot verify: %s" % e]}
         k, t = ev["kronos"], ev["timemachine"]
-        score = round(min(k["avg_R"], t["avg_R"]), 3) if k.get("avg_R") is not None and t.get("avg_R") is not None else None
+        if ev.get("kronos_gate"):
+            score = round(min(k["avg_R"], t["avg_R"]), 3) if k.get("avg_R") is not None and t.get("avg_R") is not None else None
+        else:                                       # Kronos is advice only: the Time Machine's result decides
+            score = round(t["avg_R"], 3) if t.get("avg_R") is not None else None
         why = []
         if ob["verdict"] != "PASS":
             why.append("OBSIDIAN risk engine: %s" % ("; ".join(ob["reasons"]) or ob["verdict"]))

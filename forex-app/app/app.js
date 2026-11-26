@@ -126,9 +126,24 @@ function filterTable(sig) {
   return `<details class="more"><summary>Why this signal</summary><table>${rows}${extra}</table></details>`;
 }
 
+function gradeChip(sig) {
+  const g = sig.grade && sig.grade.grade;
+  return g ? `<span class="chip grade grade-${g === "A+" ? "aplus" : g.toLowerCase()}" title="Grade: how strong the evidence is, not a promise">${esc(g)}</span>` : "";
+}
+
+function gradeBlock(sig) {
+  const g = sig.grade;
+  if (!g) return "";
+  const why = (g.why || []).map((w) => `<li>${esc(w)}</li>`).join("");
+  const missing = (g.missing || []).map((w) => `<li class="miss">Not A+: ${esc(w)}</li>`).join("");
+  const advice = (sig.advice || []).map((w) => `<li class="advice">Advice only: ${esc(w)}</li>`).join("");
+  return `<div class="grade-box"><div class="grade-title">${gradeChip(sig)} <b>${g.grade === "A+" ? "A+ setup" : "Grade " + esc(g.grade)}</b></div>
+    <ul class="reasons">${why}${missing}${advice}</ul><p class="muted small">${esc(g.note || "")}</p></div>`;
+}
+
 function signalCard(sig, { compact = false } = {}) {
   const p = sig.pair;
-  const side = sig.side ? `<span class="chip ${sig.side}">${sig.side}</span>` : "";
+  const side = (sig.side ? `<span class="chip ${sig.side}">${sig.side}</span>` : "") + gradeChip(sig);
   const status = `<span class="chip status-${sig.status}">${sig.status}</span>`;
   const head = `<div class="card-head"><span class="pair">${esc(p)}</span>${side}<span class="setup">${esc(sig.setup || "")}</span><span class="spacer"></span>${status}</div>`;
   if (sig.status === "expired") {
@@ -149,7 +164,7 @@ function signalCard(sig, { compact = false } = {}) {
       ${levelBox("TP2", "var(--target)", px(p, sig.tp2), tpSub(sig.tp2))}
     </div>`;
   const tiles = `<div class="tiles">
-      <div class="tile"><div class="k">Kronos confidence</div><div class="v">${pct(sig.kronos_confidence)}</div></div>
+      <div class="tile"><div class="k">Kronos${sig.kronos_gate ? "" : " (advice)"}</div><div class="v">${pct(sig.kronos_confidence)}</div></div>
       <div class="tile"><div class="k">Time Machine odds</div><div class="v">${pct(sig.timemachine_odds)}</div></div>
       <div class="tile"><div class="k">Expectancy</div><div class="v">${rr(sig.expectancy_r)}</div></div>
       <div class="tile"><div class="k">Risk check</div><div class="v">${verdict(sig.risk_check)}</div></div>
@@ -163,7 +178,7 @@ function signalCard(sig, { compact = false } = {}) {
   const actions = compact || !(canAct || acted) ? "" : `<div class="actions">
       <button class="btn primary" data-act="took" data-id="${esc(sig.id)}" aria-pressed="${acted === "took"}" ${acted ? "disabled" : ""}>I took this trade</button>
       <button class="btn" data-act="skipped" data-id="${esc(sig.id)}" aria-pressed="${acted === "skipped"}" ${acted ? "disabled" : ""}>Skip</button></div>`;
-  return `<div class="card">${head}<div class="when">${esc(when)}${sig.late_minutes ? ` · ${sig.late_minutes} min late` : ""}</div>${levels}${tiles}${reason}${actions}
+  return `<div class="card">${head}<div class="when">${esc(when)}${sig.late_minutes ? ` · ${sig.late_minutes} min late` : ""}</div>${levels}${compact ? "" : gradeBlock(sig)}${tiles}${reason}${actions}
     ${compact ? "" : filterTable(sig)}<p class="disclaimer">${esc(sig.disclaimer || "Analysis and education, not financial advice.")}</p></div>`;
 }
 
@@ -188,17 +203,20 @@ function renderSignalSlot() {
 }
 
 // ---------------------------------------------------------------- lists
+function isAplus(s) { return !!(s.grade && s.grade.grade === "A+"); }
+
 function renderSignalsList() {
-  const active = [...S.signals.values()].filter((s) => ACTIVE.has(s.status) && s.shown)
-    .sort((a, b) => (b.created_ts || 0) - (a.created_ts || 0));
+  const onlyAplus = $("#aplus-only") && $("#aplus-only").checked;
+  const active = [...S.signals.values()].filter((s) => ACTIVE.has(s.status) && s.shown && (!onlyAplus || isAplus(s)))
+    .sort((a, b) => (isAplus(b) - isAplus(a)) || ((b.created_ts || 0) - (a.created_ts || 0)));
   const badge = $("#badge");
   badge.hidden = !active.length;
   badge.textContent = active.length;
   $("#signals-list").innerHTML = active.length ? active.map((s) => `<button class="row" data-open="${esc(s.pair)}">
-      <div class="main"><div class="t">${esc(s.pair)} · ${esc(s.side)} · ${esc(s.status)}</div>
+      <div class="main"><div class="t">${gradeChip(s)} ${esc(s.pair)} · ${esc(s.side)} · ${esc(s.status)}</div>
       <div class="d">${esc(s.setup)} · entry ${px(s.pair, s.entry)} · SL ${px(s.pair, s.sl)} · TP1 ${px(s.pair, s.tp1)}</div></div>
-      <div class="r">${pct(s.kronos_confidence)}</div></button>`).join("")
-    : `<div class="card empty"><b>No active signals</b>Signals appear after a session's opening range, when every filter passes.</div>`;
+      <div class="r">${pct(s.timemachine_odds)}</div></button>`).join("")
+    : `<div class="card empty"><b>No active ${onlyAplus ? "A+ " : ""}signals</b>${onlyAplus ? "Waiting is a result too. A+ setups are rare by design." : "Signals appear after a session's opening range, when every required check passes."}</div>`;
 }
 
 async function renderScan() {
@@ -494,6 +512,9 @@ function wire() {
   });
   $("#settings-form").addEventListener("submit", saveSettings);
   $("#hist-filtered").addEventListener("change", renderHistory);
+  const ap = $("#aplus-only");
+  ap.checked = store.get("aplusOnly", "0") === "1";
+  ap.addEventListener("change", () => { store.set("aplusOnly", ap.checked ? "1" : "0"); renderSignalsList(); });
   $("#status").addEventListener("click", () => show("settings"));
   const theme = $("#theme");
   theme.value = store.get("theme", "system");

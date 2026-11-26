@@ -317,6 +317,7 @@ final class AppModel: ObservableObject {
             || new.useKronos != settings.useKronos || new.port != settings.port || new.engineFolder != settings.engineFolder
             || new.oandaAccount != settings.oandaAccount || !(oandaToken ?? "").isEmpty
             || new.phoneAccess != settings.phoneAccess || !(phonePassword ?? "").isEmpty
+            || new.kronosMustAgree != settings.kronosMustAgree
         settings = new
         new.save()
         writeEngineEnv(new, oandaToken: oandaToken, phonePassword: phonePassword)

@@ -123,6 +123,9 @@ struct SignalCard: View {
                         if let side = s.side {
                             Pill(text: side, color: side == "buy" ? Theme.blue : Theme.bad)
                         }
+                        if let g = s.grade?.grade {
+                            Pill(text: g, color: g == "A+" ? Theme.lime : (g == "A" ? Theme.good : Theme.dim))
+                        }
                         Text(s.setup ?? "").font(Theme.body(13)).foregroundStyle(Theme.dim).lineLimit(1)
                     }
                 }
@@ -142,7 +145,8 @@ struct SignalCard: View {
                          detail: (s.risk?.reasons ?? []).joined(separator: "; "))
                 CheckRow(title: "Your records: \(appRisk.pass ? "PASS" : "BLOCK")", ok: appRisk.pass,
                          detail: (appRisk.pass ? appRisk.notes : appRisk.reasons).joined(separator: "; "))
-                CheckRow(title: "Kronos: \(pct(s.kronosConfidence)) of paths reach TP1 first", ok: filterOK("confidence"),
+                CheckRow(title: "Kronos\(s.kronosGate == false ? " (advice only)" : ""): \(pct(s.kronosConfidence)) of paths reach TP1 first",
+                         ok: s.kronosGate == false ? nil : filterOK("confidence"),
                          detail: s.model?.name.map { v in "model: " + v } ?? "model unavailable")
                 CheckRow(title: "Time Machine: \(pct(s.timemachineOdds)) target first", ok: filterOK("timemachine"),
                          detail: s.timemachine?.verdict ?? "")
@@ -152,6 +156,15 @@ struct SignalCard: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.bg.opacity(0.6)))
+            if let g = s.grade {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(g.grade == "A+" ? "A+ setup" : "Grade \(g.grade)").font(Theme.title(14)).foregroundStyle(Theme.text)
+                    ForEach(Array(((g.why ?? []) + (g.missing ?? []).map { m in "Not A+: " + m }).enumerated()), id: \.offset) { _, line in
+                        Text("• " + line).font(Theme.body(12)).foregroundStyle(Theme.dim).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(g.note ?? "").font(Theme.body(11)).foregroundStyle(Theme.faint)
+                }
+            }
             if let lots = s.sizing?.lots ?? s.lots, lots > 0 {
                 Text(String(format: "Size %.2f lots, risk %.2f %@ at the stop", lots, s.sizing?.maxLoss ?? 0, model.settings.limits.currency))
                     .font(Theme.body(13)).foregroundStyle(Theme.dim)

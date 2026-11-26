@@ -85,6 +85,9 @@ struct SettingsView: View {
             }
             Section("Kronos") {
                 Toggle("Use Kronos (first start downloads about 1 GB)", isOn: $draft.useKronos)
+                Toggle("Kronos must agree before a signal shows", isOn: $draft.kronosMustAgree)
+                Text("Off (recommended for now): Kronos is advice only. Replayed against recent EUR/USD, it was less accurate than assuming no change, and it pulled its forecasts toward the recent average price. Signals are decided by the Time Machine and both risk checks.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Off: a simple statistical stand-in is used, and the app says so.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Account and limits (both risk engines use these)") {
