@@ -181,9 +181,11 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
 
     @app.get("/topdown")
     def topdown_view(pair: str | None = None, uid: str = Depends(user)):
-        """Top-down analysis of every pair (or one): D1, H4, H1 trend; M15 entry; M5 trigger; each plan
-        checked by the Day Trader risk check and the Time Machine, graded, best first."""
-        from ..strategy import topdown
+        """Every strategy on every pair: the top-down pullback, the day-trader setups (20-day breakout,
+        flag, 20-day average, RSI bounce, live opening-range breakouts), JeaFx-style supply and demand,
+        and CRT on H4/M15 and D1/H1. Each plan is checked by the risk check and the Time Machine,
+        graded, and ranked best first."""
+        from ..strategy import playbook, topdown
         st = _settings(uid)
         now = int(health.market_time() or time.time())
         pairs = [_pair(pair)] if pair else list(st.pairs)
@@ -192,29 +194,60 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
             last = store.get_candles(p, "1m", limit=1)
             if last:
                 rates[p] = last[-1].close
-        out = []
+        plans, views = [], []
         for p in pairs:
-            m1 = store.get_candles(p, "1m", None, now + 1, now - 35 * 86400)
+            ins = instruments.get(p)
+            m1 = store.get_candles(p, "1m", None, now + 1, now - (cfg.backfill_days + 5) * 86400)
             if len(m1) < 600:
-                out.append({"pair": p, "status": "no data", "side": None,
-                            "summary": "Not enough history yet: %d one-minute candles." % len(m1)})
+                views.append({"pair": p, "status": "no data",
+                              "summary": "Not enough history yet: %d one-minute candles." % len(m1)})
                 continue
-            td = topdown.analyse(p, m1, instruments.get(p), now)
+            tfs = topdown.frames(m1, now)
+            td = topdown.analyse(p, m1, ins, now, tfs)
+            views.append({"pair": p, "timeframes": td["timeframes"], "side": td.get("side"),
+                          "status": td.get("status"), "summary": td.get("summary")})
+            found = [td] if td.get("plan") else []
+            found += playbook.daily_setups(p, ins, tfs["1d"], tfs["1h"])
+            found += playbook.supply_demand(p, ins, tfs["4h"], tfs["15m"])
+            found += playbook.crt(p, ins, tfs["4h"], tfs["15m"], "H4", "M15")
+            found += playbook.crt(p, ins, tfs["1d"], tfs["1h"], "D1", "H1")
             five = store.get_candles(p, "5m", None, now + 1, now - cfg.tm_lookback_days * 86400)
-            h1 = store.get_candles(p, "1h", limit=200, end=now + 1)
-            out.append(topdown.evaluate(td, five, h1, cfg, st, rates, calendar.events, now))
+            h1 = tfs["1h"][-200:]
+            for item in found:
+                item.setdefault("timeframes", td["timeframes"])
+                item.setdefault("price", tfs["5m"][-1].close if tfs["5m"] else None)
+                plans.append(topdown.evaluate(item, five, h1, cfg, st, rates, calendar.events, now))
+            # the opening-range breakouts the signal engine is tracking right now, already checked and graded
+            for status in ("triggered", "waiting"):
+                for sig in store.get_signals(status=status, pair=p, shown=True, limit=10):
+                    if sig.get("sl") is None:
+                        continue
+                    plans.append({"pair": p, "strategy": "Opening-range breakout (%s)" % sig.get("setup", ""),
+                                  "side": sig.get("side"), "entry_tf": "M5", "timeframes": td["timeframes"],
+                                  "status": "enter now" if status == "triggered" else "wait",
+                                  "trigger": "a 5-minute candle closed beyond the range" if status == "triggered"
+                                  else "waiting for a 5-minute close beyond the range",
+                                  "summary": "Day Trader opening-range breakout, checked by the signal engine.",
+                                  "plan": {"entry": sig["entry"], "stop": sig["sl"], "target": sig["tp1"],
+                                           "risk_pips": sig.get("sl_pips"), "reward_risk": 1.0},
+                                  "timemachine": sig.get("timemachine"), "risk_check": sig.get("risk_check"),
+                                  "expectancy_r": sig.get("expectancy_r"), "grade": sig.get("grade"),
+                                  "passed": bool(sig.get("passed")), "reasons": sig.get("reasons") or []})
         order = {"A+": 0, "A": 1, "B": 2}
 
         def rank(x):
             g = (x.get("grade") or {}).get("grade")
-            edge = ((x.get("timemachine") or {}).get("odds") or 0) - ((x.get("timemachine") or {}).get("break_even") or 1)
+            tmx = x.get("timemachine") or {}
+            edge = (tmx.get("odds") or 0) - (tmx.get("break_even") or 1)
             return (order.get(g, 3), 0 if x.get("status") == "enter now" else 1, -edge)
 
-        out.sort(key=rank)
-        best = next((x for x in out if x.get("passed")), None)
-        return {"at": iso(now), "best": best, "results": out,
-                "note": "Rules, not predictions: the higher timeframes give the direction, the lower ones the entry. "
-                        "A grade says how strong the evidence is, not that a trade will win. Nothing is ever placed."}
+        plans.sort(key=rank)
+        best = next((x for x in plans if x.get("passed") and x.get("status") == "enter now"), None) \
+            or next((x for x in plans if x.get("passed")), None)
+        return {"at": iso(now), "best": best, "results": plans, "pairs": views,
+                "note": "Rules, not predictions: each strategy is written as fixed rules and every plan is checked "
+                        "the same way. A grade says how strong the evidence is, not that a trade will win. "
+                        "Nothing is ever placed."}
 
     @app.get("/calendar")
     async def cal(hours: int = 48, uid: str = Depends(user)):

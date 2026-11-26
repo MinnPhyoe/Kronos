@@ -214,10 +214,10 @@ final class AppModel: ObservableObject {
         topdown = r
         for t in r.results where t.enterNow {
             guard let g = t.grade?.grade, AppModel.gradeAtLeast(g, settings.alertMinGrade), let p = t.plan else { continue }
-            let key = "\(t.pair):\(p.entry):\(t.side ?? "")"
+            let key = "\(t.id):\(p.entry)"
             guard notifiedEntries.insert(key).inserted else { continue }
-            let title = "\(g) · \(Instrument.display(t.pair)) \((t.side ?? "").uppercased()): enter now"
-            let body = "Top-down: entry \(Instrument.price(p.entry, t.pair)), stop \(Instrument.price(p.stop, t.pair)), "
+            let title = "\(g) · \(Instrument.display(t.pair)) \((t.side ?? "").uppercased()): enter now (\(t.strategy ?? "setup"))"
+            let body = "Entry \(Instrument.price(p.entry, t.pair)), stop \(Instrument.price(p.stop, t.pair)), "
                 + "target \(Instrument.price(p.target, t.pair)). Your call: nothing was placed."
             let a = AlertItem(title: title, body: body, time: Date())
             alerts.insert(a, at: 0)

@@ -201,7 +201,7 @@ final class TopDownTests: XCTestCase {
     func testTopDownDecodesAndKnowsWhenToEnter() throws {
         let json = #"""
         {"at":"2026-11-26T15:01:00Z","note":"rules","best":null,"results":[
-          {"pair":"EURUSD","side":"buy","status":"enter now","passed":true,"alignment":7,
+          {"pair":"EURUSD","strategy":"CRT H4 → M15","entry_tf":"M15","side":"buy","status":"enter now","passed":true,"alignment":7,
            "timeframes":{"1d":{"bias":"up","score":2},"4h":{"bias":"up","score":3},"1h":{"bias":"up","score":2},
                          "15m":{"bias":"neutral","score":1},"5m":{"bias":"up","score":2}},
            "plan":{"entry":1.0978,"stop":1.0962,"target":1.1010,"target_note":"next level","risk_pips":1.6,"reward_risk":2.0},
@@ -215,6 +215,9 @@ final class TopDownTests: XCTestCase {
         XCTAssertEqual(e.timeframes?["4h"]?.bias, "up")
         XCTAssertEqual(e.plan?.rewardRisk, 2.0)
         XCTAssertFalse(r.results[1].enterNow)
+        XCTAssertEqual(e.strategy, "CRT H4 → M15")
+        XCTAssertEqual(e.entryTf, "M15")
+        XCTAssertNotEqual(r.results[0].id, r.results[1].id)
         XCTAssertNil(r.results[1].plan)
     }
 

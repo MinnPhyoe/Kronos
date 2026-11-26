@@ -94,7 +94,7 @@ class Config:
     oanda_env: str = "practice"              # practice | live
     eodhd_key: str | None = None
     tradermade_key: str | None = None
-    backfill_days: int = 30                  # on first start / reconnect, backfill at most this many days of 1m candles
+    backfill_days: int = 60                  # on first start / reconnect, backfill at most this many days of 1m candles
     poll_seconds: float = 5.0                # yahoo: how often to read the latest prices
 
     # simulated provider (demo / development)

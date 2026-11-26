@@ -104,9 +104,12 @@ struct TopDownPlan: Decodable {
     let stopNote: String?
 }
 
-/// The top-down analysis of one pair: direction from D1/H4/H1, entry on M15, trigger on M5.
+/// One entry plan from one strategy on one pair (the top-down pullback, the day-trader setups,
+/// JeaFx-style supply and demand, CRT, or a live opening-range breakout).
 struct TopDown: Decodable, Identifiable {
     let pair: String
+    let strategy: String?
+    let entryTf: String?
     let side: String?
     let status: String?
     let summary: String?
@@ -121,14 +124,25 @@ struct TopDown: Decodable, Identifiable {
     let reasons: [String]?
     let passed: Bool?
     let expectancyR: Double?
-    var id: String { pair }
+    var id: String { pair + ":" + (strategy ?? "") + ":" + (side ?? "") }
     var enterNow: Bool { status == "enter now" && passed == true }
+}
+
+/// Each pair's trend on every timeframe, whether or not a strategy found an entry.
+struct TopDownPairView: Decodable, Identifiable {
+    let pair: String
+    let timeframes: [String: TFView]?
+    let side: String?
+    let status: String?
+    let summary: String?
+    var id: String { pair }
 }
 
 struct TopDownResponse: Decodable {
     let at: String?
     let best: TopDown?
     let results: [TopDown]
+    let pairs: [TopDownPairView]?
     let note: String?
 }
 

@@ -90,15 +90,19 @@ def trend(candles: list, fast: int = 20, slow: int = 50, min_n: int = 30) -> dic
             "ema20": round(e20[-1], 6), "ema50": round(e50[-1], 6)}
 
 
-def analyse(pair: str, candles_1m: list, ins, now: int) -> dict:
-    """The top-down view of one pair from its 1-minute candles (30 days or more is best)."""
-    tfs = {tf: resample(candles_1m, tf) for tf in TF_ORDER}
-    # only candles that are over
+def frames(candles_1m: list, now: int) -> dict:
+    """D1, H4, H1, M15 and M5 candles that are over, built from 1-minute candles."""
     from ..config import TIMEFRAMES
-    tfs = {tf: [c for c in cs if c.open_time + TIMEFRAMES[tf] <= now] for tf, cs in tfs.items()}
+    tfs = {tf: resample(candles_1m, tf) for tf in TF_ORDER}
+    return {tf: [c for c in cs if c.open_time + TIMEFRAMES[tf] <= now] for tf, cs in tfs.items()}
+
+
+def analyse(pair: str, candles_1m: list, ins, now: int, tfs: dict | None = None) -> dict:
+    """The top-down view of one pair from its 1-minute candles (30 days or more is best)."""
+    tfs = tfs or frames(candles_1m, now)
     # the daily chart has only a few weeks of candles: shorter averages there (5 and 10 days)
     view = {tf: (trend(tfs[tf], 5, 10, 12) if tf == "1d" else trend(tfs[tf])) for tf in TF_ORDER}
-    out = {"pair": pair, "timeframes": view, "at": now}
+    out = {"pair": pair, "timeframes": view, "at": now, "strategy": "Top-down pullback", "entry_tf": "M15"}
     h4, h1, d1 = view["4h"]["score"], view["1h"]["score"], view["1d"]["score"]
     if view["4h"]["bias"] == "up" and view["1h"]["bias"] == "up":
         side = "buy"
