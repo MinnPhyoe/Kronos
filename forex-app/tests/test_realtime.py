@@ -118,6 +118,21 @@ def test_feed_stores_yahoo_candles_and_builds_5m():
     asyncio.run(run())
 
 
+def test_backfill_fills_older_history_when_only_recent_candles_are_stored():
+    """Seen on a real Mac: a few hours were already stored, so only those were ever loaded."""
+    async def run():
+        store = Store("sqlite://")
+        now = int(time.time()) - int(time.time()) % 60
+        recent = [Candle("EURUSD", "1m", now - 60 * k, 1.1, 1.1001, 1.0999, 1.1) for k in range(1, 121)]
+        store.upsert_candles(recent)                              # two hours stored before the start
+        feed = FeedService(FakeYahoo(), store, MemoryBus(), ["EURUSD"], backfill_days=1)
+        await feed.backfill()
+        assert store.candle_count("EURUSD", "1m") > 1000          # about a day, not two hours
+        assert store.first_candle_time("EURUSD", "1m") <= now - 20 * 3600
+        assert store.candle_count("EURUSD", "1h") >= 20
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------- privacy: password and .env
 def test_password_turns_on_login_and_opens_to_the_network(monkeypatch, tmp_path):
     for k in ("FOREX_PASSWORD", "FOREX_HOST", "FOREX_AUTH_MODE", "FOREX_API_TOKEN"):

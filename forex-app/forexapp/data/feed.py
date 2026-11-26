@@ -42,37 +42,45 @@ class FeedService:
 
     # ------------------------------------------------------------------ history
     async def backfill(self):
-        """Fill missing 1-minute candles since the last stored one (or seed history),
-        then rebuild the higher timeframes for the filled range."""
+        """Fill missing 1-minute candles since the last stored one (or seed history), and the older history
+        too when what is stored starts later than ``backfill_days`` ago; then rebuild the higher timeframes."""
         now = self.provider.now()
         end = int(now) - int(now) % 60                     # only minutes that are over
+        want_from = end - self.backfill_days * 86400
         for pair in self.pairs:
             last = await asyncio.to_thread(self.store.last_candle_time, pair, "1m")
-            start = (last + 60) if last else end - self.backfill_days * 86400
-            start = max(start, end - self.backfill_days * 86400) if last else start
-            if start >= end:
-                self._seed_state(pair)
-                continue
-            try:
-                rows = await self.provider.history(pair, start, end)
-            except Exception as e:
-                log.warning("backfill %s failed: %s", pair, e)
-                await asyncio.to_thread(self.store.log_health, "feed", "backfill_error", {"pair": pair, "error": str(e)})
-                self._seed_state(pair)
-                continue
-            if rows:
-                await asyncio.to_thread(self.store.upsert_candles, rows)
-                # rebuild higher candles over the filled range (from whole buckets)
-                lo = rows[0].open_time - rows[0].open_time % 3600
-                base = await asyncio.to_thread(self.store.get_candles, pair, "1m", None, end, lo)
-                for tf in HIGHER_TIMEFRAMES:
-                    hc = resample(base, tf)
-                    # the last bucket may still be forming: keep only buckets that are over
-                    hc = [c for c in hc if c.close_time <= end]
-                    await asyncio.to_thread(self.store.upsert_candles, hc)
-                log.info("backfilled %s: %d 1m candles", pair, len(rows))
-                await asyncio.to_thread(self.store.log_health, "feed", "backfill", {"pair": pair, "candles": len(rows)})
+            first = await asyncio.to_thread(self.store.first_candle_time, pair, "1m")
+            spans = []
+            if first is not None and first > want_from + 6 * 3600:
+                spans.append((want_from, first))           # stored history is too short: fetch the older part
+            start = max(last + 60, want_from) if last else want_from
+            if start < end:
+                spans.append((start, end))
+            for a, b in spans:
+                await self._fill(pair, a, b, end)
             self._seed_state(pair)
+
+    async def _fill(self, pair: str, start: int, stop: int, end: int):
+        try:
+            rows = await self.provider.history(pair, start, stop)
+        except Exception as e:
+            log.warning("backfill %s failed: %s", pair, e)
+            await asyncio.to_thread(self.store.log_health, "feed", "backfill_error", {"pair": pair, "error": str(e)})
+            return
+        rows = [r for r in rows if r.open_time < stop]
+        if not rows:
+            return
+        await asyncio.to_thread(self.store.upsert_candles, rows)
+        # rebuild the higher candles over the filled range (from whole buckets)
+        lo = rows[0].open_time - rows[0].open_time % 3600
+        hi = min(end, rows[-1].open_time + 3600 - rows[-1].open_time % 3600 + 3600)
+        base = await asyncio.to_thread(self.store.get_candles, pair, "1m", None, hi, lo)
+        for tf in HIGHER_TIMEFRAMES:
+            hc = resample(base, tf)
+            hc = [c for c in hc if c.close_time <= end]    # the last bucket may still be forming
+            await asyncio.to_thread(self.store.upsert_candles, hc)
+        log.info("backfilled %s: %d 1m candles", pair, len(rows))
+        await asyncio.to_thread(self.store.log_health, "feed", "backfill", {"pair": pair, "candles": len(rows)})
 
     def _seed_state(self, pair):
         recent = self.store.get_candles(pair, "1m", limit=120)
