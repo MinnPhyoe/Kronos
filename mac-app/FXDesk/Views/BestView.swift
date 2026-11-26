@@ -17,22 +17,20 @@ struct BestView: View {
         let best = ranked.first(where: { r in r.eligible })
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ZStack(alignment: .leading) {
-                    BlobField(base: Theme.pink, blob: Theme.coral, seed: 2)
-                    HStack(alignment: .center, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("BEST RESULT").font(Theme.title(12)).tracking(1.5).foregroundStyle(Theme.ink.opacity(0.7))
-                            Text(BestResult.message(ranked))
-                                .font(Theme.display(26))
-                                .foregroundStyle(Theme.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 8)
-                        CandleBuddy(mood: best == nil ? .waiting : .happy, color: Theme.lime).frame(width: 96, height: 134)
+                HStack(alignment: .center, spacing: 16) {
+                    StatusIcon(systemName: best == nil ? "hourglass" : "star.fill", size: 40)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Best result").font(Theme.label(12)).foregroundStyle(Theme.dim)
+                        Text(BestResult.message(ranked))
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(Theme.text)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(22)
+                    Spacer(minLength: 0)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.card))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.line, lineWidth: 1))
                 Text("A setup counts only if the engine's Day Trader risk check AND your records' risk check pass it, and the Time Machine (replays of similar past breakouts) expects a profit after costs. A+ setups come first: the Time Machine's odds are at least 10 points above break-even, from at least 30 replays, with no risk warnings and no ranging market. Kronos is advice only unless you turn on \"Kronos must agree\" in Settings.")
                     .font(Theme.body(13))
                     .foregroundStyle(Theme.dim)
@@ -75,7 +73,7 @@ struct BestView: View {
                 if ranked.isEmpty && filtered.isEmpty {
                     Panel("") {
                         HStack(spacing: 14) {
-                            CandleBuddy(mood: .sleepy).frame(width: 50)
+                            StatusIcon(systemName: "moon.zzz")
                             Text("No active setups right now. They appear after the London and New York opening ranges.")
                                 .font(Theme.body(14))
                                 .foregroundStyle(Theme.dim)

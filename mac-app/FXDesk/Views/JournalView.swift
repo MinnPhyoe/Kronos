@@ -64,7 +64,7 @@ struct JournalView: View {
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             if records.isEmpty {
                 HStack(spacing: 14) {
-                    CandleBuddy(mood: .waiting).frame(width: 46)
+                    StatusIcon(systemName: "book.closed")
                     Text("No trades recorded yet. Press “Record trade…” on a signal, or add one by hand.")
                         .font(Theme.body(13))
                         .foregroundStyle(Theme.dim)

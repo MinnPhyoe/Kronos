@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   /* matches the app: black canvas, white and grey candles, colour only for the trade's levels */
-  :root { --bg: #1c1c1f; --text: #9e9ea6; --grid: #26262b; --up: #f5f5f7; --down: #5c5c66; --wick: #b4b4bc;
+  :root { --bg: #151516; --text: #8a8a90; --grid: #1f1f22; --up: #e8e8ea; --down: #4a4a50; --wick: #8a8a90;
           --entry: #1ea7ff; --stop: #ff453a; --target: #30d158; --band: #9b7bff; --range: #ff7a59; }
   html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; font: 12px -apple-system, system-ui, sans-serif; }
   #chart { position: absolute; inset: 0; }
@@ -73,7 +73,8 @@ class Overlay {   // forecast band, session ranges and the trade's profit/loss z
 
 const chart = LW.createChart(document.getElementById("chart"), {
   autoSize: true, layout: { attributionLogo: true, fontSize: 11 },
-  rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 6 },
+  rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 6,
+    barSpacing: 7, minBarSpacing: 3 },
   crosshair: { mode: LW.CrosshairMode.Normal },
   localization: { timeFormatter: (t) => new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) },
 });
@@ -110,7 +111,8 @@ window.fx = {
     candles.setData(bars);
     document.getElementById("empty").style.display = bars.length ? "none" : "grid";
     const n = bars.length + medianCount;
-    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 150), to: n + 4 });
+    // always show about 150 bars' width, even with fewer candles: they keep their normal size and spacing
+    chart.timeScale().setVisibleLogicalRange({ from: n - 150, to: n + 4 });
   },
   updateCandle(r) {                           // a closed candle, or the forming one
     const b = { time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] };

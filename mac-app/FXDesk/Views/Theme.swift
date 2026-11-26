@@ -3,30 +3,33 @@ import SwiftUI
 /// The look: a black canvas, heavy rounded type, playful colour cards with slowly morphing blobs,
 /// cartoon art with thick black outlines, and white capsule buttons.
 enum Theme {
-    static let bg = Color(hex: 0x0B0B0C)
-    static let card = Color(hex: 0x1C1C1F)
-    static let cardHigh = Color(hex: 0x26262B)
-    static let ink = Color(hex: 0x111111)
-    static let text = Color.white
-    static let dim = Color.white.opacity(0.62)
-    static let faint = Color.white.opacity(0.38)
-    static let line = Color.white.opacity(0.10)
+    // Monochrome: near-black surfaces, hairline dividers, grey labels, white numbers.
+    // Colour only where it carries meaning: green up / good, red down / bad, amber for warnings.
+    static let bg = Color(hex: 0x0E0E0F)
+    static let card = Color(hex: 0x151516)
+    static let cardHigh = Color(hex: 0x1D1D1F)
+    static let ink = Color(hex: 0x0E0E0F)
+    static let text = Color(hex: 0xF2F2F3)
+    static let dim = Color.white.opacity(0.55)
+    static let faint = Color.white.opacity(0.32)
+    static let line = Color.white.opacity(0.08)
 
-    static let pink = Color(hex: 0xFF2E8A)
-    static let coral = Color(hex: 0xFF7A59)
-    static let purple = Color(hex: 0x6B3BFF)
-    static let blue = Color(hex: 0x1EA7FF)
-    static let lime = Color(hex: 0xC7F561)
-    static let gold = Color(hex: 0xFFC83D)
-    static let good = Color(hex: 0x30D158)
-    static let bad = Color(hex: 0xFF453A)
+    static let pink = Color(hex: 0xF2F2F3)        // the old accent, now plain white text
+    static let coral = Color(hex: 0xE8A13A)       // warnings
+    static let purple = Color.white.opacity(0.7)
+    static let blue = Color(hex: 0x8AB4FF)        // entry / buy
+    static let lime = Color.white.opacity(0.85)
+    static let gold = Color(hex: 0xE8A13A)
+    static let good = Color(hex: 0x3DD68C)
+    static let bad = Color(hex: 0xF0616D)
 
-    static func display(_ size: CGFloat) -> Font { .system(size: size, weight: .heavy, design: .rounded) }
-    static func title(_ size: CGFloat) -> Font { .system(size: size, weight: .bold, design: .rounded) }
-    static func body(_ size: CGFloat = 14) -> Font { .system(size: size, weight: .medium, design: .rounded) }
-    static func number(_ size: CGFloat = 14) -> Font { .system(size: size, weight: .semibold, design: .monospaced) }
+    static func display(_ size: CGFloat) -> Font { .system(size: size * 0.72, weight: .semibold) }
+    static func title(_ size: CGFloat) -> Font { .system(size: size * 0.92, weight: .medium) }
+    static func body(_ size: CGFloat = 14) -> Font { .system(size: size * 0.95, weight: .regular) }
+    static func number(_ size: CGFloat = 14) -> Font { .system(size: size, weight: .medium).monospacedDigit() }
+    static func label(_ size: CGFloat = 12) -> Font { .system(size: size, weight: .regular) }
 
-    static let radius: CGFloat = 24
+    static let radius: CGFloat = 14
 }
 
 extension Color {
@@ -71,11 +74,9 @@ struct BlobField: View {
     }
 
     static func draw(_ ctx: inout GraphicsContext, size: CGSize, time t: Double, base: Color, blob: Color) {
-        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(base))
-        for i in 0..<4 {
-            let opacity: Double = i % 2 == 0 ? 0.85 : 0.5
-            ctx.fill(blobPath(index: i, time: t, size: size), with: .color(blob.opacity(opacity)))
-        }
+        // monochrome: a dark surface with one soft, slowly drifting highlight
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.card))
+        ctx.fill(blobPath(index: 0, time: t, size: size), with: .color(Color.white.opacity(0.035)))
     }
 
     static func blobPath(index: Int, time t: Double, size: CGSize) -> Path {
@@ -308,12 +309,10 @@ struct FanArt: View {
             p.move(to: start)
             p.addCurve(to: CGPoint(x: w * 0.88, y: endY), control1: c1, control2: c2)
             let main = i == 3
-            ctx.stroke(p, with: .color(Theme.ink), style: StrokeStyle(lineWidth: main ? 8 : 5, lineCap: .round))
-            ctx.stroke(p, with: .color(main ? Color.white : Theme.lime), style: StrokeStyle(lineWidth: main ? 4 : 2, lineCap: .round))
+            ctx.stroke(p, with: .color(Color.white.opacity(main ? 0.9 : 0.25)), style: StrokeStyle(lineWidth: main ? 1.8 : 1, lineCap: .round))
         }
-        let dot = Path(ellipseIn: CGRect(x: start.x - 8, y: start.y - 8, width: 16, height: 16))
+        let dot = Path(ellipseIn: CGRect(x: start.x - 3.5, y: start.y - 3.5, width: 7, height: 7))
         ctx.fill(dot, with: .color(.white))
-        ctx.stroke(dot, with: .color(Theme.ink), lineWidth: 3.5)
     }
 }
 
@@ -500,14 +499,14 @@ struct CapsuleButtonBody: View {
 
     var body: some View {
         configuration.label
-            .font(Theme.title(14))
+            .font(.system(size: 13, weight: .medium))
             .lineLimit(1)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
             .foregroundStyle(foreground)
-            .background(Capsule().fill(fill))
-            .overlay(Capsule().stroke(Color.white.opacity(kind == .ghost ? 0.28 : 0), lineWidth: 1.5))
-            .contentShape(Capsule())
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.line, lineWidth: kind == .ghost ? 1 : 0))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.95 : 1)
             .animation(.spring(response: 0.22, dampingFraction: 0.6), value: configuration.isPressed)
             .opacity(isEnabled ? 1 : 0.4)
@@ -517,15 +516,15 @@ struct CapsuleButtonBody: View {
         switch kind {
         case .white: return Theme.ink
         case .ghost: return Theme.text
-        case .pink: return Color.white
+        case .pink: return Theme.ink
         }
     }
 
     private var fill: Color {
         switch kind {
-        case .white: return Color.white
-        case .ghost: return Color.white.opacity(0.06)
-        case .pink: return Theme.pink
+        case .white: return Theme.text
+        case .ghost: return Theme.cardHigh
+        case .pink: return Theme.text
         }
     }
 }
@@ -541,11 +540,11 @@ struct Chip: View {
             Text(text)
                 .font(Theme.title(13))
                 .lineLimit(1)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 7)
-                .foregroundStyle(selected ? Theme.ink : Theme.text)
-                .background(Capsule().fill(selected ? Color.white : Theme.card))
-                .contentShape(Capsule())
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .foregroundStyle(selected ? Theme.ink : Theme.dim)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.text : Color.clear))
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.15), value: selected)
@@ -559,11 +558,11 @@ struct CoinBadge: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(CoinBadge.color(currency))
-            Circle().stroke(Theme.ink, lineWidth: 2.5)
+            Circle().fill(Theme.cardHigh)
+            Circle().stroke(Theme.bg, lineWidth: 2)
             Text(CoinBadge.symbol(currency))
-                .font(.system(size: size * 0.46, weight: .heavy, design: .rounded))
-                .foregroundStyle(Theme.ink)
+                .font(.system(size: size * 0.42, weight: .semibold))
+                .foregroundStyle(Theme.text)
         }
         .frame(width: size, height: size)
     }
@@ -668,6 +667,159 @@ struct Panel<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.card))
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.card))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.line, lineWidth: 1))
+    }
+}
+
+
+// MARK: - dashboard parts
+
+/// A small icon in a quiet circle: used where an empty state needs a picture.
+struct StatusIcon: View {
+    let systemName: String
+    var size: CGFloat = 34
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: size * 0.42, weight: .regular))
+            .foregroundStyle(Theme.dim)
+            .frame(width: size, height: size)
+            .background(Circle().fill(Theme.cardHigh))
+            .accessibilityHidden(true)
+    }
+}
+
+/// "▲ 2.7% vs …": green up, red down, never colour alone (the arrow says it too).
+struct DeltaChip: View {
+    let value: Double?
+    let suffix: String
+    var format: String = "%.2f%%"
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let v = value {
+                Image(systemName: v >= 0 ? "arrow.up" : "arrow.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.bg)
+                    .frame(width: 13, height: 13)
+                    .background(Circle().fill(v >= 0 ? Theme.good : Theme.bad))
+                Text(String(format: format, abs(v))).foregroundStyle(v >= 0 ? Theme.good : Theme.bad)
+            }
+            Text(suffix).foregroundStyle(Theme.dim)
+        }
+        .font(Theme.label(11))
+    }
+}
+
+/// One figure in the top row: grey label, big number, a line under it.
+struct StatCell<Footer: View>: View {
+    let label: String
+    let value: String
+    let footer: Footer
+
+    init(_ label: String, value: String, @ViewBuilder footer: () -> Footer) {
+        self.label = label
+        self.value = value
+        self.footer = footer()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(Theme.label(12)).foregroundStyle(Theme.dim)
+            Text(value).font(.system(size: 24, weight: .medium).monospacedDigit()).foregroundStyle(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.6)
+            footer
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+}
+
+/// Bars around an arc, the used share bright: like a dial made of ticks.
+struct RadialBarGauge: View {
+    let fraction: Double
+    var ticks = 44
+
+    var body: some View {
+        Canvas { ctx, size in
+            let c = CGPoint(x: size.width / 2, y: size.height / 2)
+            let r = min(size.width, size.height) / 2
+            let start = 140.0, sweep = 260.0
+            let lit = Int((min(max(fraction, 0), 1) * Double(ticks)).rounded())
+            for i in 0..<ticks {
+                let a = (start + sweep * Double(i) / Double(ticks - 1)) * Double.pi / 180
+                var p = Path()
+                p.move(to: CGPoint(x: c.x + cos(a) * (r * 0.72), y: c.y + sin(a) * (r * 0.72)))
+                p.addLine(to: CGPoint(x: c.x + cos(a) * (r * 0.98), y: c.y + sin(a) * (r * 0.98)))
+                let on = i < lit
+                ctx.stroke(p, with: .color(Color.white.opacity(on ? 0.85 : 0.14)),
+                           style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Thin vertical stripes, the first share bright: a meter that reads at a glance.
+struct StripeMeter: View {
+    let fraction: Double
+    var stripes = 64
+
+    var body: some View {
+        Canvas { ctx, size in
+            let w = size.width / CGFloat(stripes)
+            let lit = Int((min(max(fraction, 0), 1) * Double(stripes)).rounded())
+            for i in 0..<stripes {
+                let rect = CGRect(x: CGFloat(i) * w, y: 0, width: max(1, w * 0.45), height: size.height)
+                ctx.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(Color.white.opacity(i < lit ? 0.8 : 0.14)))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// A bar split into labelled shares (each 0...1), with a legend under it.
+struct SegmentBar: View {
+    let parts: [(label: String, share: Double, opacity: Double)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geo in
+                HStack(spacing: 3) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.white.opacity(part.opacity))
+                            .frame(width: max(4, (geo.size.width - 3 * CGFloat(parts.count - 1)) * CGFloat(part.share)))
+                    }
+                }
+            }
+            .frame(height: 10)
+            HStack(spacing: 14) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    HStack(spacing: 5) {
+                        Circle().fill(Color.white.opacity(part.opacity)).frame(width: 6, height: 6)
+                        Text(part.label).font(Theme.label(11)).foregroundStyle(Theme.dim)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// "Label ........ value" with a hairline under it.
+struct KeyValueRow: View {
+    let key: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(key).font(Theme.label(13)).foregroundStyle(Theme.dim)
+            Spacer()
+            Text(value).font(Theme.number(13)).foregroundStyle(Theme.text).lineLimit(1)
+        }
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
 }

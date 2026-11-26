@@ -78,7 +78,7 @@ struct AnalysisPanel: View {
                 } else {
                     Panel("Signal") {
                         HStack(spacing: 14) {
-                            CandleBuddy(mood: .waiting).frame(width: 46)
+                            StatusIcon(systemName: "clock")
                             Text("No setup on \(Instrument.display(model.pair)) yet. Signals appear after a session's opening range, when the checks pass.")
                                 .font(Theme.body(13))
                                 .foregroundStyle(Theme.dim)
@@ -134,7 +134,7 @@ struct AnalysisPanel: View {
                     .padding(14)
                 } else {
                     HStack(spacing: 12) {
-                        CandleBuddy(mood: .sleepy, color: Theme.lime).frame(width: 44)
+                        StatusIcon(systemName: "sparkles")
                         Text(f?.stale == true ? "The last forecast is older than the last candle. Press Analyse." : "No forecast yet. Press Analyse.")
                             .font(Theme.title(13)).foregroundStyle(Color.white)
                             .fixedSize(horizontal: false, vertical: true)

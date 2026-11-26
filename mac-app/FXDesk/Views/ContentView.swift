@@ -126,8 +126,12 @@ struct SidebarHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            CandleBuddy(mood: model.engineState == .running ? .happy : .sleepy).frame(width: 26, height: 36)
-            Text("FX Desk").font(Theme.display(20)).foregroundStyle(Theme.pink)
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 24, height: 24)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.text))
+            Text("FX Desk").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
             Spacer(minLength: 0)
         }
         .padding(.bottom, 6)
@@ -187,7 +191,7 @@ struct AlertsView: View {
                 Text("Alerts").font(Theme.display(34)).foregroundStyle(Theme.pink)
                 if model.alerts.isEmpty {
                     HStack(spacing: 18) {
-                        CandleBuddy(mood: .sleepy).frame(width: 70)
+                        StatusIcon(systemName: "bell")
                         Text("Alerts appear here when a setup forms, triggers, hits TP or SL, or news is coming. They also show as Mac notifications.")
                             .font(Theme.body(14))
                             .foregroundStyle(Theme.dim)
