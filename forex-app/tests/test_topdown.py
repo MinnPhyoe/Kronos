@@ -71,3 +71,13 @@ def test_topdown_endpoint_ranks_and_grades():
     if res.get("plan"):
         assert "timemachine" in res and "risk_check" in res
         assert res["passed"] == (res["grade"] is not None)
+
+
+def test_pullback_stop_is_never_wider_than_about_three_atr():
+    now = ts("2026-11-25 12:00")
+    m1 = trending_minutes("EURUSD", now - 30 * 86400, 30, 0.000003)
+    td = topdown.analyse("EURUSD", m1, instruments.get("EURUSD"), now)
+    if td.get("plan"):
+        tfs = topdown.frames(m1, now)
+        a15 = topdown.atr(tfs["15m"])
+        assert td["plan"]["risk_pips"] * 0.0001 <= 3.3 * a15

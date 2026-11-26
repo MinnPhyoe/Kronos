@@ -125,12 +125,18 @@ def analyse(pair: str, candles_1m: list, ins, now: int, tfs: dict | None = None)
     entry = ins.round_price(e15)
     # stop beyond the last 15-minute swing against the trade, at least one ATR from the entry
     highs15, lows15 = swings(m15[-60:])
+    # the most recent swing against the trade that is beyond the entry
     if side == "buy":
-        swing = min((l for _, l in lows15[-2:]), default=entry - a15)
+        swing = next((l for _, l in reversed(lows15) if l < entry), entry - a15)
         stop = min(swing, entry - a15) - 0.2 * a15
     else:
-        swing = max((h for _, h in highs15[-2:]), default=entry + a15)
+        swing = next((h for _, h in reversed(highs15) if h > entry), entry + a15)
         stop = max(swing, entry + a15) + 0.2 * a15
+    if abs(entry - stop) > 3.2 * a15:
+        out.update(side=side, status="no trade",
+                   summary="The trend is aligned, but the last 15-minute swing is %.0f pips away: too wide a stop "
+                           "for a pullback entry. Waiting for tighter structure." % (abs(entry - stop) / ins.pip))
+        return out
     min_risk = 4 * ins.typical_spread_pips * ins.pip             # never tighter than four spreads
     if abs(entry - stop) < min_risk:
         stop = entry - sgn * min_risk

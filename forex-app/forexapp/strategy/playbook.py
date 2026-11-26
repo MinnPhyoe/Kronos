@@ -192,9 +192,14 @@ def supply_demand(pair, ins, h4, m15) -> list:
     touched = any((c.low <= proximal) if side == "buy" else (c.high >= proximal) for c in after[:-1])
     if touched:
         return []
+    # target: the nearest H4 swing in the trade's direction that gives at least 2R, capped at 3R
     swing_hi, swing_lo = swings(h4[-40:])
-    target_pool = [v for _, v in (swing_hi if side == "buy" else swing_lo)]
-    target = (max(target_pool) if side == "buy" else min(target_pool)) if target_pool else proximal + sgn * 3 * a
+    risk = abs(proximal - distal) + 0.1 * a
+    pool = sorted((v for _, v in (swing_hi if side == "buy" else swing_lo) if sgn * (v - proximal) >= 2 * risk),
+                  key=lambda v: sgn * (v - proximal))
+    target = pool[0] if pool else proximal + sgn * 3 * risk
+    if sgn * (target - proximal) > 3 * risk:
+        target = proximal + sgn * 3 * risk
     price = m15[-1].close
     last = m15[-1]
     in_zone = (distal <= price <= proximal) if side == "buy" else (proximal <= price <= distal)

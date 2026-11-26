@@ -99,3 +99,13 @@ def test_supply_demand_runs_on_a_trend_and_plans_with_it():
     for p in playbook.supply_demand("EURUSD", EU, tfs["4h"], tfs["15m"]):
         assert p["side"] == "buy"
         sane(p)
+
+
+def test_supply_demand_target_is_capped_at_3r():
+    from test_topdown import trending_minutes
+    from forexapp.strategy import topdown
+    now = 1_795_000_000 // 60 * 60
+    m1 = trending_minutes("EURUSD", now - 40 * 86400, 40, 0.000003)
+    tfs = topdown.frames(m1, now)
+    for p in playbook.supply_demand("EURUSD", EU, tfs["4h"], tfs["15m"]):
+        assert p["plan"]["reward_risk"] <= 3.05
