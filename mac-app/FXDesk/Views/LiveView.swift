@@ -17,7 +17,7 @@ struct LiveView: View {
                     if let p = model.lastPrice {
                         Text(Instrument.price(p, model.pair))
                             .font(Theme.number(24))
-                            .foregroundStyle(Theme.pink)
+                            .foregroundStyle(Theme.text)
                             .monospacedDigit()
                             .contentTransition(.numericText())
                             .animation(.easeOut(duration: 0.2), value: p)
@@ -27,7 +27,7 @@ struct LiveView: View {
                     } label: {
                         Label(model.analysing ? "Analysing…" : "Analyse", systemImage: "sparkles")
                     }
-                    .buttonStyle(CapsuleButtonStyle(kind: .pink))
+                    .buttonStyle(CapsuleButtonStyle())
                     .disabled(model.analysing || model.engineState != .running)
                     .help("Run Kronos now on this pair and timeframe, and refresh the Day Trader setups")
                 }

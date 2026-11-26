@@ -147,7 +147,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
-        .tint(Theme.pink)
+        .tint(Theme.accent)
         .navigationTitle("Settings")
         .onAppear {
             if !loaded { draft = model.settings; loaded = true }

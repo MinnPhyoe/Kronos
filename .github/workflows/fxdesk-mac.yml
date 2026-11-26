@@ -27,10 +27,16 @@ defaults:
 
 jobs:
   run-on-a-mac:
-    runs-on: macos-15
+    runs-on: macos-14                 # macos-15 jobs stopped being picked up on 26 Nov
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use Xcode 16
+        run: |
+          x=$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)
+          echo "Using $x"
+          sudo xcode-select -s "$x"
 
       - name: About this Mac
         run: |

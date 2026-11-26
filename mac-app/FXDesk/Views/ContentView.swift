@@ -50,7 +50,7 @@ struct ContentView: View {
             detail
                 .background(Theme.bg)
         }
-        .tint(Theme.pink)
+        .tint(Theme.accent)
         .background(Theme.bg)
         .onAppear { model.boot() }
         .task { await tourIfAsked() }
@@ -191,7 +191,7 @@ struct AlertsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Alerts").font(Theme.display(34)).foregroundStyle(Theme.pink)
+                Text("Alerts").font(Theme.display(34)).foregroundStyle(Theme.text)
                 if model.alerts.isEmpty {
                     HStack(spacing: 18) {
                         StatusIcon(systemName: "bell")

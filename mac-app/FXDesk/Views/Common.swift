@@ -190,7 +190,7 @@ struct SignalCard: View {
         .padding(18)
         .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.card))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-            .stroke(highlight ? Theme.pink : Theme.line, lineWidth: highlight ? 2.5 : 1))
+            .stroke(highlight ? Theme.text.opacity(0.45) : Theme.line, lineWidth: highlight ? 2.5 : 1))
     }
 
     private func filterOK(_ name: String) -> Bool? {

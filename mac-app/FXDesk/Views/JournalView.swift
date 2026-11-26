@@ -22,7 +22,7 @@ struct JournalView: View {
         let lostWeek = JournalView.lost(snaps, inSamePeriodAs: Date(), by: AppRiskEngine.tradingWeek)
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 14) {
-                Text("Records").font(Theme.display(34)).foregroundStyle(Theme.pink)
+                Text("Records").font(Theme.display(34)).foregroundStyle(Theme.text)
                 Spacer()
                 Text("Kept only on this Mac. Your loss limits are worked out from these.")
                     .font(Theme.body(12))
@@ -128,7 +128,7 @@ struct RecordEditor: View {
                 PairBadge(pair: pair, size: 28)
                 Text(record == nil ? "Record a trade" : "Trade \(Instrument.display(pair)) \(side)")
                     .font(Theme.display(26))
-                    .foregroundStyle(Theme.pink)
+                    .foregroundStyle(Theme.text)
             }
             Text("This records the trade in your journal. It does not place an order: place it yourself with your broker.")
                 .font(Theme.body(13)).foregroundStyle(Theme.dim)
@@ -164,7 +164,7 @@ struct RecordEditor: View {
                 Spacer()
                 if let r = record, r.isOpen {
                     Button("Close trade") { closeTrade(r) }
-                        .buttonStyle(CapsuleButtonStyle(kind: .pink))
+                        .buttonStyle(CapsuleButtonStyle())
                         .disabled(exitPrice <= 0)
                 }
                 Button(record == nil ? "Record trade" : "Save") { save() }
@@ -176,7 +176,7 @@ struct RecordEditor: View {
         .padding(22)
         .frame(width: 540)
         .background(Theme.bg)
-        .tint(Theme.pink)
+        .tint(Theme.accent)
         .preferredColorScheme(.dark)
         .onAppear(perform: load)
     }
