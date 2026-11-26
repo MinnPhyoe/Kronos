@@ -135,10 +135,12 @@ final class PhoneAccessTests: XCTestCase {
 
 final class GradeTests: XCTestCase {
     func testGradeAndAdviceOnlyKronosDecode() throws {
-        let json = #"{"id":"EURUSD:london:2026-11-26","pair":"EURUSD","side":"buy","status":"triggered","entry":1.1,"sl":1.099,"tp1":1.101,
+        let json = #"""
+        {"id":"EURUSD:london:2026-11-26","pair":"EURUSD","side":"buy","status":"triggered","entry":1.1,"sl":1.099,"tp1":1.101,
           "expectancy_r":0.21,"kronos_gate":false,"advice":["Kronos: 20% of paths"],
           "grade":{"grade":"A+","why":["Time Machine: 64% target first"],"missing":[],"note":"not a promise"},
-          "timemachine":{"avg_r":0.3},"filters":[{"name":"confidence","ok":false,"detail":"x","advisory":true}]}"#
+          "timemachine":{"avg_r":0.3},"filters":[{"name":"confidence","ok":false,"detail":"x","advisory":true}]}
+        """#
         let s = try EngineJSON.decoder.decode(Signal.self, from: Data(json.utf8))
         XCTAssertTrue(s.isAPlus)
         XCTAssertEqual(s.kronosGate, false)
