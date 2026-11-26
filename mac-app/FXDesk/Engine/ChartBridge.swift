@@ -7,11 +7,14 @@ final class ChartBridge: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
     private(set) var webView: WKWebView?
     private var ready = false
     private var queue: [String] = []
+    /// The page's drawings changed (JSON text): the app keeps them per pair.
+    var onDrawings: ((String) -> Void)?
 
     func makeWebView() -> WKWebView {
         if let w = webView { return w }
         let config = WKWebViewConfiguration()
         config.userContentController.add(self, name: "fxReady")
+        config.userContentController.add(self, name: "fxDrawings")
         let w = WKWebView(frame: .zero, configuration: config)
         w.navigationDelegate = self
         w.setValue(false, forKey: "drawsBackground")
@@ -43,6 +46,7 @@ final class ChartBridge: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "fxReady" { markReady() }
+        if message.name == "fxDrawings", let json = message.body as? String { onDrawings?(json) }
     }
 
     private func markReady() {
@@ -96,11 +100,35 @@ final class ChartBridge: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         call("setRanges", list)
     }
 
-    /// A top-down plan on the chart: entry, stop and target, dashed until it is entered.
-    func setPlan(side: String, entry: Double, stop: Double, target: Double) {
+    /// A plan on the chart: entry, stop and target with their labels, dashed until it is entered.
+    func setPlan(side: String, entry: Double, stop: Double, target: Double, pair: String, strategy: String, waiting: Bool = true) {
         let now = Int(Date().timeIntervalSince1970)
-        call("setLevels", ["side": side, "entry": entry, "stop": stop, "tp1": target, "tp2": target,
-                           "start": now - 3600, "end": now + 7200, "waiting": true])
+        var levels = ChartBridge.labels(side: side, entry: entry, stop: stop, target: target, pair: pair, name: strategy)
+        levels.merge(["side": side, "entry": entry, "stop": stop, "tp1": target, "tp2": target,
+                      "start": now - 3600, "end": now + 7200, "waiting": waiting]) { _, new in new }
+        call("setLevels", levels)
+    }
+
+    /// "Buy · CRT H4→M15", "SL −16.0 pips", "TP +32.0 pips · 2.0R".
+    static func labels(side: String, entry: Double, stop: Double, target: Double, pair: String, name: String) -> [String: Any] {
+        let pip = Instrument.pip(pair)
+        let risk = abs(entry - stop)
+        let reward = abs(target - entry)
+        let r = risk > 0 ? reward / risk : 0
+        return ["entryLabel": (side == "sell" ? "Sell" : "Buy") + (name.isEmpty ? "" : " · " + name),
+                "slLabel": String(format: "SL −%.1f pips", risk / pip),
+                "tpLabel": String(format: "TP +%.1f pips · %.1fR", reward / pip, r)]
+    }
+
+    /// ▲ / ▼ markers on the candles where signals fired: [(time, side, text)].
+    func setMarkers(_ markers: [(time: Int, side: String, text: String)]) {
+        call("setMarkers", markers.map { m in ["time": m.time, "side": m.side, "text": m.text] as [String: Any] })
+    }
+
+    /// The drawings saved for this pair (JSON text from the page), or none.
+    func setDrawings(_ json: String?) {
+        let obj = json.flatMap { j in try? JSONSerialization.jsonObject(with: Data(j.utf8)) } ?? []
+        call("setDrawings", obj)
     }
 
     func setLevels(_ s: Signal?, holdSeconds: Int = 7200) {
@@ -109,7 +137,10 @@ final class ChartBridge: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             return
         }
         let start = s.range?.end ?? s.createdTs ?? Int(Date().timeIntervalSince1970)
-        call("setLevels", ["side": s.side ?? "buy", "entry": e, "stop": sl, "tp1": t1, "tp2": s.tp2 ?? t1,
-                           "start": start, "end": start + holdSeconds, "waiting": s.status == "waiting"])
+        var levels = ChartBridge.labels(side: s.side ?? "buy", entry: e, stop: sl, target: t1, pair: s.pair, name: s.setup ?? "")
+        levels.merge(["side": s.side ?? "buy", "entry": e, "stop": sl, "tp1": t1, "tp2": s.tp2 ?? t1,
+                      "start": start, "end": start + holdSeconds, "waiting": s.status == "waiting"]) { _, new in new }
+        if let t2 = s.tp2, t2 != t1 { levels["tp2Label"] = String(format: "TP2 +%.1f pips", abs(t2 - e) / Instrument.pip(s.pair)) }
+        call("setLevels", levels)
     }
 }

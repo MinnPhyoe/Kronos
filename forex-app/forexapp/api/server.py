@@ -131,7 +131,14 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
     def candles(pair: str = "EURUSD", tf: str = "5m", limit: int = Query(500, ge=1, le=5000),
                 end: int | None = None, uid: str = Depends(user)):
         p, t = _pair(pair), _tf(tf)
-        rows = store.get_candles(p, t, limit=limit, end=end)
+        if t in ("1m", "5m", "15m", "1h"):
+            rows = store.get_candles(p, t, limit=limit, end=end)
+        else:                                   # 30m comes from 15m, 2h / 4h / 1d from 1h, built on request
+            from ..data.candles import resample
+            src = "15m" if TIMEFRAMES[t] < 3600 else "1h"
+            per = TIMEFRAMES[t] // TIMEFRAMES[src]
+            base = store.get_candles(p, src, limit=min(limit * per + per, 60000), end=end)
+            rows = resample(base, t)[-limit:]
         return {"pair": p, "tf": t, "candles": [[c.open_time, c.open, c.high, c.low, c.close, c.tick_volume,
                                                  round(c.spread, 8)] for c in rows],
                 "columns": ["time", "open", "high", "low", "close", "tick_volume", "spread"]}

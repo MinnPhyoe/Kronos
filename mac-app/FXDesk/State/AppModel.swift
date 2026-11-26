@@ -46,6 +46,7 @@ final class AppModel: ObservableObject {
     @Published var prices: [String: Double] = [:]
     @Published var lastData: Date?                 // the last tick or candle from the engine
     @Published var topdown: TopDownResponse?
+    @Published var shownPlan: TopDown?              // a plan you chose to see on the chart ("Show on chart")
     @Published var topdownLoading = false
     private var notifiedEntries = Set<String>()
     @Published var signals: [String: Signal] = [:]
@@ -66,6 +67,9 @@ final class AppModel: ObservableObject {
     private init() {
         api = APIClient(baseURL: AppSettings.load().baseURL)
         api.token = AppModel.readEnvPassword(AppSettings.load())
+        chart.onDrawings = { [weak self] json in
+            Task { @MainActor in self?.saveDrawings(json) }
+        }
     }
 
     var activeSignals: [Signal] { signals.values.filter { $0.isActive }.sorted { ($0.createdTs ?? 0) > ($1.createdTs ?? 0) } }
@@ -212,6 +216,8 @@ final class AppModel: ObservableObject {
         defer { topdownLoading = false }
         guard let r = try? await api.topdown() else { return }
         topdown = r
+        drawLevels()
+        updateMarkers()
         for t in r.results where t.enterNow {
             guard let g = t.grade?.grade, AppModel.gradeAtLeast(g, settings.alertMinGrade), let p = t.plan else { continue }
             let key = "\(t.id):\(p.entry)"
@@ -231,14 +237,77 @@ final class AppModel: ObservableObject {
         return (order[g] ?? 0) >= (order[minimum] ?? 1)
     }
 
-    /// Draw a top-down plan on the live chart of its pair.
+    /// Show a plan on the live chart of its pair; it stays there on every timeframe until cleared.
     func showPlan(_ t: TopDown) {
-        guard let p = t.plan else { return }
-        if t.pair != pair { select(pair: t.pair) }
-        Task {
-            try? await Task.sleep(nanoseconds: 900_000_000)      // after the pair's chart has loaded
-            chart.setPlan(side: t.side ?? "buy", entry: p.entry, stop: p.stop, target: p.target)
+        guard t.plan != nil else { return }
+        shownPlan = t
+        if t.pair != pair { select(pair: t.pair) } else { drawLevels() }
+    }
+
+    func clearShownPlan() {
+        shownPlan = nil
+        drawLevels()
+    }
+
+    /// The best plan for this pair from the Entries list: passed every check first, else any plan.
+    var autoPlan: TopDown? {
+        let mine = (topdown?.results ?? []).filter { t in t.pair == pair && t.plan != nil && t.status != "invalid" }
+        return mine.first(where: { t in t.passed == true }) ?? mine.first
+    }
+
+    /// Entry, SL and TP on the chart: the plan you chose, else the pair's live signal, else its best plan.
+    func drawLevels() {
+        if let t = shownPlan, t.pair == pair, let p = t.plan {
+            chart.setPlan(side: t.side ?? "buy", entry: p.entry, stop: p.stop, target: p.target, pair: t.pair,
+                          strategy: t.strategy ?? "plan", waiting: !t.enterNow)
+        } else if let s = signalForPair, s.isActive, s.sl != nil {
+            chart.setLevels(s)
+        } else if let t = autoPlan, let p = t.plan {
+            chart.setPlan(side: t.side ?? "buy", entry: p.entry, stop: p.stop, target: p.target, pair: t.pair,
+                          strategy: t.strategy ?? "plan", waiting: !t.enterNow)
+        } else {
+            chart.setLevels(signalForPair)
         }
+    }
+
+    /// ▲ / ▼ where this pair's signals triggered, and on the last candle for plans that say "enter now".
+    func updateMarkers() {
+        let iso = ISO8601DateFormatter()
+        var out: [(time: Int, side: String, text: String)] = []
+        for s in signals.values where s.pair == pair && s.status != "filtered" {
+            if let t = s.trigger?.time, let d = iso.date(from: t), let side = s.side {
+                out.append((Int(d.timeIntervalSince1970), side, AppModel.shortName(s.setup ?? "ORB")))
+            }
+        }
+        if let last = candles.last?.time {
+            for t in (topdown?.results ?? []) where t.pair == pair && t.enterNow {
+                out.append((last, t.side ?? "buy", AppModel.shortName(t.strategy ?? "")))
+            }
+        }
+        chart.setMarkers(out)
+    }
+
+    nonisolated static func shortName(_ strategy: String) -> String {
+        if strategy.hasPrefix("CRT") { return "CRT" }
+        if strategy.hasPrefix("Supply") { return "S&D" }
+        if strategy.hasPrefix("Top-down") { return "TD" }
+        if strategy.hasPrefix("20-day breakout") { return "20D" }
+        if strategy.hasPrefix("20-day average") { return "MA20" }
+        if strategy.hasPrefix("RSI") { return "RSI" }
+        if strategy.hasPrefix("Flag") { return "Flag" }
+        return "ORB"
+    }
+
+    // MARK: drawings, kept per pair on this Mac
+
+    private func drawingsKey(_ p: String) -> String { "FXDesk.drawings." + p }
+
+    func saveDrawings(_ json: String) {
+        UserDefaults.standard.set(json, forKey: drawingsKey(pair))
+    }
+
+    func loadDrawings() -> String? {
+        UserDefaults.standard.string(forKey: drawingsKey(pair))
     }
 
     private func pushToPhone(title: String, body: String) async {
@@ -322,7 +391,8 @@ final class AppModel: ObservableObject {
             var d: [String: Signal] = [:]
             for s in list { d[s.id] = s }
             signals = d
-            chart.setLevels(signalForPair)
+            drawLevels()
+            updateMarkers()
         }
     }
 
@@ -343,8 +413,10 @@ final class AppModel: ObservableObject {
         analysis = nil
         chart.setForecast(forecast?.available == true ? forecast : nil)
         sessionWindows = (try? await api.sessions(pair: p)) ?? []
-        chart.setRanges(tf == .h1 ? [] : sessionWindows, until: candles.last.map { $0.time + tf.seconds } ?? 0)
-        chart.setLevels(signalForPair)
+        chart.setRanges(tf.seconds >= 3600 ? [] : sessionWindows, until: candles.last.map { $0.time + tf.seconds } ?? 0)
+        chart.setDrawings(loadDrawings())
+        drawLevels()
+        updateMarkers()
     }
 
     func select(pair p: String) {
@@ -416,7 +488,10 @@ final class AppModel: ObservableObject {
         case "signal":
             guard let s = m.signal else { return }
             signals[s.id] = s
-            if s.pair == pair { chart.setLevels(signalForPair) }
+            if s.pair == pair {
+                drawLevels()
+                updateMarkers()
+            }
         case "alert":
             let a = AlertItem(title: m.title ?? "Alert", body: m.body ?? "", time: Date())
             alerts.insert(a, at: 0)

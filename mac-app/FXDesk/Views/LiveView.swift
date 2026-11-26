@@ -28,8 +28,9 @@ struct LiveView: View {
                         Label(model.analysing ? "Analysing…" : "Analyse", systemImage: "sparkles")
                     }
                     .buttonStyle(CapsuleButtonStyle())
-                    .disabled(model.analysing || model.engineState != .running)
-                    .help("Run Kronos now on this pair and timeframe, and refresh the Day Trader setups")
+                    .disabled(model.analysing || model.engineState != .running || model.timeframe == .d1)
+                    .help(model.timeframe == .d1 ? "Kronos needs at least 64 candles: use 4H or lower"
+                          : "Run Kronos now on this pair and timeframe, and refresh the Day Trader setups")
                 }
                 HStack(spacing: 12) {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -45,6 +46,24 @@ struct LiveView: View {
                         }
                     }
                     .padding(3)
+                    .background(Capsule().fill(Theme.card))
+                }
+                if let plan = model.shownPlan, plan.pair == model.pair {
+                    HStack(spacing: 8) {
+                        Image(systemName: "scope").font(.system(size: 11))
+                        Text("On the chart: \(plan.strategy ?? "plan") \((plan.side ?? "").uppercased())")
+                            .font(Theme.label(12))
+                        Button {
+                            model.clearShownPlan()
+                        } label: {
+                            Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Stop showing this plan; the chart goes back to the pair's signal or best plan")
+                    }
+                    .foregroundStyle(Theme.dim)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
                     .background(Capsule().fill(Theme.card))
                 }
                 ChartView(bridge: model.chart)

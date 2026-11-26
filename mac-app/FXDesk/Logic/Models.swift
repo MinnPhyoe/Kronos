@@ -13,7 +13,7 @@ struct Candle: Equatable, Identifiable {
 }
 
 enum Timeframe: String, CaseIterable, Identifiable {
-    case m1 = "1m", m5 = "5m", m15 = "15m", h1 = "1h"
+    case m1 = "1m", m5 = "5m", m15 = "15m", h1 = "1h", h4 = "4h", d1 = "1d"
     var id: String { rawValue }
     var seconds: Int {
         switch self {
@@ -21,15 +21,26 @@ enum Timeframe: String, CaseIterable, Identifiable {
         case .m5: return 300
         case .m15: return 900
         case .h1: return 3600
+        case .h4: return 14400
+        case .d1: return 86400
         }
     }
-    var label: String { self == .h1 ? "1H" : rawValue }
+    var label: String {
+        switch self {
+        case .h1: return "1H"
+        case .h4: return "4H"
+        case .d1: return "1D"
+        default: return rawValue
+        }
+    }
     var engineName: String {
         switch self {
         case .m1: return "M1"
         case .m5: return "M5"
         case .m15: return "M15"
         case .h1: return "H1"
+        case .h4: return "H4"
+        case .d1: return "D1"
         }
     }
 }

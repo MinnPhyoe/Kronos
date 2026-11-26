@@ -227,3 +227,19 @@ final class TopDownTests: XCTestCase {
         XCTAssertTrue(AppModel.gradeAtLeast("A", "B"))
     }
 }
+
+final class ChartLevelTests: XCTestCase {
+    func testLevelLabelsShowPipsAndR() {
+        let l = ChartBridge.labels(side: "buy", entry: 1.1000, stop: 1.0984, target: 1.1032, pair: "EURUSD", name: "CRT H4 → M15")
+        XCTAssertEqual(l["entryLabel"] as? String, "Buy · CRT H4 → M15")
+        XCTAssertEqual(l["slLabel"] as? String, "SL −16.0 pips")
+        XCTAssertEqual(l["tpLabel"] as? String, "TP +32.0 pips · 2.0R")
+    }
+
+    func testFourHourAndDailyTimeframes() {
+        XCTAssertEqual(Timeframe.h4.seconds, 14400)
+        XCTAssertEqual(Timeframe.d1.label, "1D")
+        XCTAssertEqual(AppModel.shortName("Supply & demand (JeaFx style)"), "S&D")
+        XCTAssertEqual(AppModel.shortName("CRT D1 → H1"), "CRT")
+    }
+}

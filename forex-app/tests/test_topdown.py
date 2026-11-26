@@ -81,3 +81,18 @@ def test_pullback_stop_is_never_wider_than_about_three_atr():
         tfs = topdown.frames(m1, now)
         a15 = topdown.atr(tfs["15m"])
         assert td["plan"]["risk_pips"] * 0.0001 <= 3.3 * a15
+
+
+def test_candles_endpoint_builds_4h_and_daily_from_hourly():
+    now = int(time.time()) // 60 * 60
+    store = Store("sqlite://")
+    m1 = trending_minutes("EURUSD", now - 10 * 86400, 10, 0.000003)
+    store.upsert_candles(resample(m1, "1h"))
+    cfg = Config()
+    cfg.pairs = ["EURUSD"]
+    with TestClient(create_app(cfg, store, MemoryBus(), engine=False)) as c:
+        h4 = c.get("/candles", params={"pair": "EURUSD", "tf": "4h", "limit": 20}).json()["candles"]
+        d1 = c.get("/candles", params={"pair": "EURUSD", "tf": "1d", "limit": 5}).json()["candles"]
+    assert len(h4) == 20 and all(r[0] % 14400 == 0 for r in h4)
+    assert 1 <= len(d1) <= 5 and all(r[0] % 86400 == 0 for r in d1)
+    assert h4[-1][2] >= max(h4[-1][1], h4[-1][4]) and h4[-1][3] <= min(h4[-1][1], h4[-1][4])
