@@ -56,13 +56,15 @@ struct SettingsView: View {
             }
             Section("Live prices") {
                 Picker("Price source", selection: $draft.provider) {
-                    Text("Yahoo Finance (free, no account; can lag a few seconds)").tag("yahoo")
-                    Text("OANDA practice account (real broker prices)").tag("oanda")
+                    Text("OANDA practice account (recommended: real broker prices, free)").tag("oanda")
+                    Text("Yahoo Finance (no account, but often blocked and delayed)").tag("yahoo")
                 }
                 if draft.provider == "oanda" {
                     TextField("OANDA account ID", text: $draft.oandaAccount, prompt: Text("101-001-1234567-001"))
                     SecureField("OANDA token", text: $oandaToken, prompt: Text(model.hasOandaToken ? "saved (type to replace)" : "paste your token"))
                     Text("The token goes only into the engine's private .env file on this Mac.").font(.caption).foregroundStyle(.secondary)
+                    Text("Get both from a free OANDA demo account: log in, open Manage API Access, and press Generate. The account ID looks like 101-004-1234567-001.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("Pairs") {
