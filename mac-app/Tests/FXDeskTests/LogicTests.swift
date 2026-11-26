@@ -196,3 +196,31 @@ final class LostTodayTests: XCTestCase {
         XCTAssertEqual(String(format: "%.0f", lost), "0")
     }
 }
+
+final class TopDownTests: XCTestCase {
+    func testTopDownDecodesAndKnowsWhenToEnter() throws {
+        let json = #"""
+        {"at":"2026-11-26T15:01:00Z","note":"rules","best":null,"results":[
+          {"pair":"EURUSD","side":"buy","status":"enter now","passed":true,"alignment":7,
+           "timeframes":{"1d":{"bias":"up","score":2},"4h":{"bias":"up","score":3},"1h":{"bias":"up","score":2},
+                         "15m":{"bias":"neutral","score":1},"5m":{"bias":"up","score":2}},
+           "plan":{"entry":1.0978,"stop":1.0962,"target":1.1010,"target_note":"next level","risk_pips":1.6,"reward_risk":2.0},
+           "timemachine":{"odds":0.64,"break_even":0.33,"avg_R":0.4},"grade":{"grade":"A+","why":["x"]},"risk_check":"PASS"},
+          {"pair":"USDJPY","side":null,"status":"no trade","summary":"The 4-hour and 1-hour trends don't agree"}]}
+        """#
+        let r = try EngineJSON.decoder.decode(TopDownResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(r.results.count, 2)
+        let e = r.results[0]
+        XCTAssertTrue(e.enterNow)
+        XCTAssertEqual(e.timeframes?["4h"]?.bias, "up")
+        XCTAssertEqual(e.plan?.rewardRisk, 2.0)
+        XCTAssertFalse(r.results[1].enterNow)
+        XCTAssertNil(r.results[1].plan)
+    }
+
+    func testAlertGradeThreshold() {
+        XCTAssertTrue(AppModel.gradeAtLeast("A+", "A+"))
+        XCTAssertFalse(AppModel.gradeAtLeast("A", "A+"))
+        XCTAssertTrue(AppModel.gradeAtLeast("A", "B"))
+    }
+}

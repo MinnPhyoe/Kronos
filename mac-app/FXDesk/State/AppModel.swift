@@ -45,6 +45,9 @@ final class AppModel: ObservableObject {
     @Published var lastPrice: Double?
     @Published var prices: [String: Double] = [:]
     @Published var lastData: Date?                 // the last tick or candle from the engine
+    @Published var topdown: TopDownResponse?
+    @Published var topdownLoading = false
+    private var notifiedEntries = Set<String>()
     @Published var signals: [String: Signal] = [:]
     @Published var scan: [ScanItem] = []
     @Published var alerts: [AlertItem] = []
@@ -173,6 +176,7 @@ final class AppModel: ObservableObject {
         engineState = .running
         try? await api.putSettings(settings.engineAccount)
         await refreshAll()
+        Task { await refreshTopDown() }
         stream.start(url: api.streamURL, onMessage: { [weak self] m in
             self?.handle(m)
         }, onState: { [weak self] up in
@@ -194,10 +198,58 @@ final class AppModel: ObservableObject {
             if round % 4 == 0 {                    // every minute, in case a stream message was missed
                 await refreshSignals()
                 scan = (try? await api.scan()) ?? scan
+                await refreshTopDown()
             }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
         updateKeepAwake()                          // the engine stopped or failed: let the Mac sleep again
+    }
+
+    /// The top-down analysis of every pair; alerts (Mac and phone) when a plan turns "enter now".
+    func refreshTopDown() async {
+        guard engineState == .running else { return }
+        topdownLoading = true
+        defer { topdownLoading = false }
+        guard let r = try? await api.topdown() else { return }
+        topdown = r
+        for t in r.results where t.enterNow {
+            guard let g = t.grade?.grade, AppModel.gradeAtLeast(g, settings.alertMinGrade), let p = t.plan else { continue }
+            let key = "\(t.pair):\(p.entry):\(t.side ?? "")"
+            guard notifiedEntries.insert(key).inserted else { continue }
+            let title = "\(g) · \(Instrument.display(t.pair)) \((t.side ?? "").uppercased()): enter now"
+            let body = "Top-down: entry \(Instrument.price(p.entry, t.pair)), stop \(Instrument.price(p.stop, t.pair)), "
+                + "target \(Instrument.price(p.target, t.pair)). Your call: nothing was placed."
+            let a = AlertItem(title: title, body: body, time: Date())
+            alerts.insert(a, at: 0)
+            notify(a)
+            Task { await pushToPhone(title: title, body: body) }
+        }
+    }
+
+    nonisolated static func gradeAtLeast(_ g: String, _ minimum: String) -> Bool {
+        let order = ["A+": 3, "A": 2, "B": 1]
+        return (order[g] ?? 0) >= (order[minimum] ?? 1)
+    }
+
+    /// Draw a top-down plan on the live chart of its pair.
+    func showPlan(_ t: TopDown) {
+        guard let p = t.plan else { return }
+        if t.pair != pair { select(pair: t.pair) }
+        Task {
+            try? await Task.sleep(nanoseconds: 900_000_000)      // after the pair's chart has loaded
+            chart.setPlan(side: t.side ?? "buy", entry: p.entry, stop: p.stop, target: p.target)
+        }
+    }
+
+    private func pushToPhone(title: String, body: String) async {
+        let topic = settings.ntfyTopic.trimmingCharacters(in: .whitespaces)
+        guard !topic.isEmpty, let url = URL(string: "https://ntfy.sh/" + topic) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(title, forHTTPHeaderField: "Title")
+        req.setValue("high", forHTTPHeaderField: "Priority")
+        req.httpBody = Data(body.utf8)
+        _ = try? await URLSession.shared.data(for: req)
     }
 
     /// True when the market is open but no price has arrived for 3 minutes.

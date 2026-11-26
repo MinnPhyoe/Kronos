@@ -96,6 +96,13 @@ final class ChartBridge: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         call("setRanges", list)
     }
 
+    /// A top-down plan on the chart: entry, stop and target, dashed until it is entered.
+    func setPlan(side: String, entry: Double, stop: Double, target: Double) {
+        let now = Int(Date().timeIntervalSince1970)
+        call("setLevels", ["side": side, "entry": entry, "stop": stop, "tp1": target, "tp2": target,
+                           "start": now - 3600, "end": now + 7200, "waiting": true])
+    }
+
     func setLevels(_ s: Signal?, holdSeconds: Int = 7200) {
         guard let s, s.isActive || s.status == "closed", let e = s.entry, let sl = s.sl, let t1 = s.tp1 else {
             call("setLevels", nil)

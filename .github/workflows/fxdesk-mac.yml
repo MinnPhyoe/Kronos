@@ -84,7 +84,7 @@ jobs:
           screencapture -x shots/0-first-start.png && echo "captured the first start"
           i=1
           limit=2700                  # the first start installs the packages and downloads Kronos
-          for s in home live best records alerts settings; do
+          for s in home topdown live best records alerts settings; do
             n=0
             while [ ! -f "$TOUR/$s.ready" ] && [ $n -lt $limit ] && kill -0 $APP 2>/dev/null; do sleep 1; n=$((n+1)); done
             limit=240

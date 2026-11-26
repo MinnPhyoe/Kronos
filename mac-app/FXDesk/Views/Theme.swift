@@ -640,8 +640,10 @@ struct PairRow: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(hover || selected ? Theme.cardHigh : Theme.card))
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(hover || selected ? Theme.cardHigh : Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.line, lineWidth: 1))
+            .animation(.easeOut(duration: 0.15), value: hover)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { h in hover = h }
@@ -729,6 +731,8 @@ struct StatCell<Footer: View>: View {
             Text(label).font(Theme.label(12)).foregroundStyle(Theme.dim)
             Text(value).font(.system(size: 24, weight: .medium).monospacedDigit()).foregroundStyle(Theme.text)
                 .lineLimit(1).minimumScaleFactor(0.6)
+                .contentTransition(.numericText())                 // digits roll when the value changes
+                .animation(.snappy(duration: 0.35), value: value)
             footer
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -738,9 +742,14 @@ struct StatCell<Footer: View>: View {
 }
 
 /// Bars around an arc, the used share bright: like a dial made of ticks.
-struct RadialBarGauge: View {
-    let fraction: Double
+struct RadialBarGauge: View, Animatable {
+    var fraction: Double
     var ticks = 44
+
+    var animatableData: Double {                               // the ticks light up one by one
+        get { fraction }
+        set { fraction = newValue }
+    }
 
     var body: some View {
         Canvas { ctx, size in
@@ -763,9 +772,14 @@ struct RadialBarGauge: View {
 }
 
 /// Thin vertical stripes, the first share bright: a meter that reads at a glance.
-struct StripeMeter: View {
-    let fraction: Double
+struct StripeMeter: View, Animatable {
+    var fraction: Double
     var stripes = 64
+
+    var animatableData: Double {
+        get { fraction }
+        set { fraction = newValue }
+    }
 
     var body: some View {
         Canvas { ctx, size in
@@ -792,6 +806,7 @@ struct SegmentBar: View {
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(Color.white.opacity(part.opacity))
                             .frame(width: max(4, (geo.size.width - 3 * CGFloat(parts.count - 1)) * CGFloat(part.share)))
+                            .animation(.easeOut(duration: 0.6), value: part.share)
                     }
                 }
             }

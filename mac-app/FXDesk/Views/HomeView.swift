@@ -8,6 +8,7 @@ struct HomeView: View {
     @EnvironmentObject var model: AppModel
     @Query(sort: \TradeRecord.openedAt, order: .reverse) private var records: [TradeRecord]
     let go: (Screen) -> Void
+    @State private var appeared = false                 // gauges fill in when the screen opens
 
     var body: some View {
         let snaps = records.map { r in r.snapshot }
@@ -51,6 +52,7 @@ struct HomeView: View {
         }
         .background(Theme.bg)
         .navigationTitle("Home")
+        .onAppear { withAnimation(.easeOut(duration: 1.0)) { appeared = true } }
     }
 
     private var hairline: some View { Rectangle().fill(Theme.line).frame(height: 1) }
@@ -133,6 +135,8 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(Instrument.price(last, model.pair)).font(.system(size: 26, weight: .medium).monospacedDigit())
                         .foregroundStyle(Theme.text)
+                        .contentTransition(.numericText())
+                        .animation(.snappy(duration: 0.3), value: last)
                     Text("\(Instrument.display(model.pair)) · last \(durationText(span)) of \(model.timeframe.label) candles")
                         .font(Theme.label(12)).foregroundStyle(Theme.dim)
                 }
@@ -209,7 +213,8 @@ struct HomeView: View {
         let used = limits.dailyLimit > 0 ? lostToday / limits.dailyLimit : 0
         return VStack(spacing: 12) {
             ZStack {
-                RadialBarGauge(fraction: used)
+                RadialBarGauge(fraction: appeared ? used : 0)
+                    .animation(.easeOut(duration: 0.8), value: used)
                 VStack(spacing: 4) {
                     Image(systemName: "shield.lefthalf.filled").font(.system(size: 14)).foregroundStyle(Theme.dim)
                         .frame(width: 30, height: 30).background(Circle().fill(Theme.cardHigh))
@@ -248,7 +253,8 @@ struct HomeView: View {
                 Spacer()
                 Text(up == nil ? "press Analyse" : "of forecast paths").font(Theme.label(11)).foregroundStyle(Theme.faint)
             }
-            StripeMeter(fraction: up ?? 0).frame(height: 30)
+            StripeMeter(fraction: appeared ? (up ?? 0) : 0).frame(height: 30)
+                .animation(.easeOut(duration: 0.8), value: up)
             HStack(spacing: 14) {
                 legendDot("Up", 0.8)
                 legendDot("Down", 0.14)
@@ -298,6 +304,7 @@ struct PriceLineChart: View {
     let candles: [Candle]
     let pair: String
     @State private var hover: Candle?
+    @State private var reveal: CGFloat = 0              // the line draws in from the left when it appears
 
     private func date(_ c: Candle) -> Date { Date(timeIntervalSince1970: TimeInterval(c.time)) }
 
@@ -356,6 +363,13 @@ struct PriceLineChart: View {
                     }
             }
         }
+        .mask(alignment: .leading) {
+            GeometryReader { g in
+                Rectangle().frame(width: max(1, g.size.width * reveal))
+            }
+        }
+        .onAppear { withAnimation(.easeOut(duration: 0.9)) { reveal = 1 } }
+        .animation(.easeInOut(duration: 0.4), value: candles.last?.time)
         .overlay(alignment: .topTrailing) {
             if let h = hover {
                 VStack(alignment: .leading, spacing: 3) {

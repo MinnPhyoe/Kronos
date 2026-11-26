@@ -2,12 +2,13 @@ import AppKit
 import SwiftUI
 
 enum Screen: String, CaseIterable, Identifiable {
-    case home, live, best, records, alerts, settings
+    case home, topdown, live, best, records, alerts, settings
     var id: Screen { self }
 
     var title: String {
         switch self {
         case .home: return "Home"
+        case .topdown: return "Top-down"
         case .live: return "Live chart"
         case .best: return "Best result"
         case .records: return "Records"
@@ -19,6 +20,7 @@ enum Screen: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .home: return "house"
+        case .topdown: return "square.stack.3d.down.right"
         case .live: return "chart.xyaxis.line"
         case .best: return "star"
         case .records: return "book.closed"
@@ -112,6 +114,7 @@ struct ContentView: View {
     @ViewBuilder private var detail: some View {
         switch screen ?? .home {
         case .home: HomeView(go: { s in screen = s })
+        case .topdown: TopDownView(go: { s in screen = s })
         case .live: LiveView()
         case .best: BestView()
         case .records: JournalView()

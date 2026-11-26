@@ -89,6 +89,8 @@ final class APIClient {
         try await get("/forecast", ["pair": pair, "tf": tf.rawValue])
     }
 
+    func topdown() async throws -> TopDownResponse { try await get("/topdown") }
+
     func signals() async throws -> [Signal] {
         let r: SignalsResponse = try await get("/signals", ["status": "all", "include_filtered": "true", "limit": "300"])
         return r.signals

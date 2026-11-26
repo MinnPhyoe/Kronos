@@ -87,6 +87,51 @@ struct FilterItem: Decodable, Identifiable {
     var id: String { name }
 }
 
+/// One timeframe in the top-down view: "up", "down", "neutral" or "unknown", scored -3..+3.
+struct TFView: Decodable {
+    let bias: String
+    let score: Int?
+    let why: String?
+}
+
+struct TopDownPlan: Decodable {
+    let entry: Double
+    let stop: Double
+    let target: Double
+    let targetNote: String?
+    let riskPips: Double?
+    let rewardRisk: Double?
+    let stopNote: String?
+}
+
+/// The top-down analysis of one pair: direction from D1/H4/H1, entry on M15, trigger on M5.
+struct TopDown: Decodable, Identifiable {
+    let pair: String
+    let side: String?
+    let status: String?
+    let summary: String?
+    let alignment: Int?
+    let price: Double?
+    let plan: TopDownPlan?
+    let trigger: String?
+    let timeframes: [String: TFView]?
+    let timemachine: TimeMachineBlock?
+    let grade: GradeBlock?
+    let riskCheck: String?
+    let reasons: [String]?
+    let passed: Bool?
+    let expectancyR: Double?
+    var id: String { pair }
+    var enterNow: Bool { status == "enter now" && passed == true }
+}
+
+struct TopDownResponse: Decodable {
+    let at: String?
+    let best: TopDown?
+    let results: [TopDown]
+    let note: String?
+}
+
 /// A+ / A / B for a signal that passed every required check: how strong the evidence is, not a promise.
 struct GradeBlock: Decodable {
     let grade: String
