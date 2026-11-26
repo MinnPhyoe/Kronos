@@ -187,3 +187,10 @@ final class EngineIdentityTests: XCTestCase {
         XCTAssertFalse(AppModel.isFXDeskEngine(other))
     }
 }
+
+final class LostTodayTests: XCTestCase {
+    func testNoLossesShowsAsZeroNotMinusZero() {
+        let lost = JournalView.lost([], inSamePeriodAs: Date(), by: AppRiskEngine.tradingDay)
+        XCTAssertEqual(String(format: "%.0f", lost), "0")
+    }
+}

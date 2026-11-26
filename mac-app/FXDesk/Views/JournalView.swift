@@ -89,7 +89,7 @@ struct JournalView: View {
         for r in records where !r.isOpen {
             if let d = r.closedAt, period(d) == key { net += r.pnl ?? 0 }
         }
-        return max(0.0, -net)
+        return max(0.0, -net) + 0.0               // + 0.0 turns -0.0 into 0, so it never shows as "-0"
     }
 
     private func open(_ id: TradeRecord.ID?) {
