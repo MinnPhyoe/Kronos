@@ -179,6 +179,43 @@ def create_app(cfg: Config, store, bus, calendar: Calendar | None = None, health
         return {"market_time": iso(now), "results": scan(cs, ws, now),
                 "note": "A scan lists charts that match a rule, not trades to take."}
 
+    @app.get("/topdown")
+    def topdown_view(pair: str | None = None, uid: str = Depends(user)):
+        """Top-down analysis of every pair (or one): D1, H4, H1 trend; M15 entry; M5 trigger; each plan
+        checked by the Day Trader risk check and the Time Machine, graded, best first."""
+        from ..strategy import topdown
+        st = _settings(uid)
+        now = int(health.market_time() or time.time())
+        pairs = [_pair(pair)] if pair else list(st.pairs)
+        rates = {}
+        for p in st.pairs:
+            last = store.get_candles(p, "1m", limit=1)
+            if last:
+                rates[p] = last[-1].close
+        out = []
+        for p in pairs:
+            m1 = store.get_candles(p, "1m", None, now + 1, now - 35 * 86400)
+            if len(m1) < 600:
+                out.append({"pair": p, "status": "no data", "side": None,
+                            "summary": "Not enough history yet: %d one-minute candles." % len(m1)})
+                continue
+            td = topdown.analyse(p, m1, instruments.get(p), now)
+            five = store.get_candles(p, "5m", None, now + 1, now - cfg.tm_lookback_days * 86400)
+            h1 = store.get_candles(p, "1h", limit=200, end=now + 1)
+            out.append(topdown.evaluate(td, five, h1, cfg, st, rates, calendar.events, now))
+        order = {"A+": 0, "A": 1, "B": 2}
+
+        def rank(x):
+            g = (x.get("grade") or {}).get("grade")
+            edge = ((x.get("timemachine") or {}).get("odds") or 0) - ((x.get("timemachine") or {}).get("break_even") or 1)
+            return (order.get(g, 3), 0 if x.get("status") == "enter now" else 1, -edge)
+
+        out.sort(key=rank)
+        best = next((x for x in out if x.get("passed")), None)
+        return {"at": iso(now), "best": best, "results": out,
+                "note": "Rules, not predictions: the higher timeframes give the direction, the lower ones the entry. "
+                        "A grade says how strong the evidence is, not that a trade will win. Nothing is ever placed."}
+
     @app.get("/calendar")
     async def cal(hours: int = 48, uid: str = Depends(user)):
         await calendar.refresh()
