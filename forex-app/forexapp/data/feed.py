@@ -47,18 +47,25 @@ class FeedService:
         now = self.provider.now()
         end = int(now) - int(now) % 60                     # only minutes that are over
         want_from = end - self.backfill_days * 86400
-        for pair in self.pairs:
-            last = await asyncio.to_thread(self.store.last_candle_time, pair, "1m")
-            first = await asyncio.to_thread(self.store.first_candle_time, pair, "1m")
-            spans = []
-            if first is not None and first > want_from + 6 * 3600:
-                spans.append((want_from, first))           # stored history is too short: fetch the older part
-            start = max(last + 60, want_from) if last else want_from
-            if start < end:
-                spans.append((start, end))
-            for a, b in spans:
-                await self._fill(pair, a, b, end)
-            self._seed_state(pair)
+        gate = asyncio.Semaphore(4)                        # all pairs at once, at most four downloads at a time
+
+        async def one(pair):
+            async with gate:
+                last = await asyncio.to_thread(self.store.last_candle_time, pair, "1m")
+                first = await asyncio.to_thread(self.store.first_candle_time, pair, "1m")
+                spans = []
+                if first is not None and first > want_from + 6 * 3600:
+                    spans.append((want_from, first))       # stored history is too short: fetch the older part
+                start = max(last + 60, want_from) if last else want_from
+                if start < end:
+                    spans.append((start, end))
+                for a, b in spans:
+                    await self._fill(pair, a, b, end)
+                self._seed_state(pair)
+
+        t0 = time.monotonic()
+        await asyncio.gather(*(one(p) for p in self.pairs))
+        log.info("history ready for %s in %.0f s", ", ".join(self.pairs), time.monotonic() - t0)
 
     async def _fill(self, pair: str, start: int, stop: int, end: int):
         try:

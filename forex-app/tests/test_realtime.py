@@ -170,3 +170,27 @@ def test_login_check_and_lockout():
         # locked out now, even with the right password
         assert c.get("/auth/check", headers={"Authorization": "Bearer correct-horse"}).status_code == 429
         assert c.get("/").status_code == 200            # the page itself loads, and shows the login
+
+
+def test_backfill_downloads_pairs_at_the_same_time():
+    class Slow(FakeYahoo):
+        active = peak = 0
+
+        async def history(self, pair, start, end):
+            Slow.active += 1
+            Slow.peak = max(Slow.peak, Slow.active)
+            await asyncio.sleep(0.2)
+            Slow.active -= 1
+            return await super().history(pair, start, end)
+
+    async def run():
+        store = Store("sqlite://")
+        pairs = ["EURUSD", "GBPUSD", "USDJPY"]
+        feed = FeedService(Slow(), store, MemoryBus(), pairs, backfill_days=1)
+        t0 = time.monotonic()
+        await feed.backfill()
+        assert Slow.peak >= 3                                  # all three downloading together
+        assert time.monotonic() - t0 < 0.2 * 3 + 5
+        for p in pairs:
+            assert store.candle_count(p, "1m") > 1000
+    asyncio.run(run())
