@@ -241,3 +241,11 @@ def test_strategy_service_from_range_to_triggered_signal():
         done = store.get_signal(sig["id"])
         assert done["status"] == "closed" and done["outcome"] == "tp1" and done["outcome_r"] > 0.9
     asyncio.run(run())
+
+
+def test_alerts_respect_the_minimum_grade():
+    from forexapp.strategy.service import grade_ok, grade_tag
+    a_plus, b = {"grade": {"grade": "A+"}}, {"grade": {"grade": "B"}}
+    assert grade_ok(a_plus, "A+") and not grade_ok(b, "A+") and grade_ok(b, "B")
+    assert not grade_ok({}, "B")                                       # no grade: did not pass
+    assert grade_tag(a_plus) == "A+ · "

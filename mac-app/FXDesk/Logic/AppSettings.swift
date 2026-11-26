@@ -14,6 +14,9 @@ struct AppSettings: Codable, Equatable {
     var limits = RiskLimits()
     var phoneAccess: Bool = false              // let your phone open the engine's web app on your network
     var kronosMustAgree: Bool = false          // off: Kronos is advice only (it was less accurate than "no change")
+    var alertMinGrade: String = "A+"           // alert for signals of this grade or better: A+, A or B
+    var keepAwake: Bool = true                 // keep the Mac from sleeping while the engine runs
+    var ntfyTopic: String = ""                 // phone push through the free ntfy app; empty: off
 
     static let allPairs = ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
     static let allSessions = [("london", "London 08:00"), ("newyork", "New York 08:00"), ("tokyo", "Tokyo 09:00 (JPY)")]
@@ -44,7 +47,10 @@ struct AppSettings: Codable, Equatable {
             // the engine script listens on the network only when this says so AND a password is set
             "FOREX_HOST": phoneAccess ? "0.0.0.0" : "127.0.0.1",
             "FOREX_KRONOS_GATE": kronosMustAgree ? "1" : "0",
+            "FOREX_ALERT_MIN_GRADE": alertMinGrade,
         ]
+        let topic = ntfyTopic.trimmingCharacters(in: .whitespaces)
+        u["FOREX_NTFY_TOPIC"] = topic.isEmpty ? .some(nil) : .some(topic)
         if let p = phonePassword, !p.isEmpty { u["FOREX_PASSWORD"] = p }
         if provider == "oanda" {
             u["OANDA_ACCOUNT"] = oandaAccount
@@ -86,6 +92,9 @@ extension AppSettings {
         limits = (try? c.decodeIfPresent(RiskLimits.self, forKey: .limits)) ?? limits
         phoneAccess = try c.decodeIfPresent(Bool.self, forKey: .phoneAccess) ?? phoneAccess
         kronosMustAgree = try c.decodeIfPresent(Bool.self, forKey: .kronosMustAgree) ?? kronosMustAgree
+        alertMinGrade = try c.decodeIfPresent(String.self, forKey: .alertMinGrade) ?? alertMinGrade
+        keepAwake = try c.decodeIfPresent(Bool.self, forKey: .keepAwake) ?? keepAwake
+        ntfyTopic = try c.decodeIfPresent(String.self, forKey: .ntfyTopic) ?? ntfyTopic
     }
 
     /// Why a phone password can't be used, or nil when it is fine.

@@ -153,3 +153,28 @@ final class GradeTests: XCTestCase {
         XCTAssertEqual(s.envUpdates(oandaToken: nil)["FOREX_KRONOS_GATE"], "1")
     }
 }
+
+final class AlertSettingsTests: XCTestCase {
+    func testAlertGradeAndPhoneTopicReachTheEngine() {
+        var s = AppSettings()
+        XCTAssertEqual(s.alertMinGrade, "A+")
+        var u = s.envUpdates(oandaToken: nil)
+        XCTAssertEqual(u["FOREX_ALERT_MIN_GRADE"], "A+")
+        XCTAssertTrue(u.keys.contains("FOREX_NTFY_TOPIC"))
+        XCTAssertNil(u["FOREX_NTFY_TOPIC"]!)                         // empty topic: removed from .env
+        s.ntfyTopic = "fxdesk-abc123"
+        u = s.envUpdates(oandaToken: nil)
+        XCTAssertEqual(u["FOREX_NTFY_TOPIC"], "fxdesk-abc123")
+        let merged = EnvFile.merge(existing: "FOREX_NTFY_TOPIC=old\n", updates: AppSettings().envUpdates(oandaToken: nil))
+        XCTAssertFalse(merged.contains("FOREX_NTFY_TOPIC"))
+    }
+
+    func testMarketHours() {
+        let f = ISO8601DateFormatter()
+        XCTAssertTrue(AppModel.marketOpen(f.date(from: "2026-11-25T15:00:00Z")!))    // Wednesday
+        XCTAssertFalse(AppModel.marketOpen(f.date(from: "2026-11-28T12:00:00Z")!))   // Saturday
+        XCTAssertFalse(AppModel.marketOpen(f.date(from: "2026-11-29T20:00:00Z")!))   // Sunday before 22:00
+        XCTAssertTrue(AppModel.marketOpen(f.date(from: "2026-11-29T22:30:00Z")!))    // Sunday after 22:00
+        XCTAssertFalse(AppModel.marketOpen(f.date(from: "2026-11-27T22:30:00Z")!))   // Friday after 22:00
+    }
+}

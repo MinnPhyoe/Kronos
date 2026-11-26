@@ -157,6 +157,18 @@ struct EngineBadge: View {
                     Text("Prices: \(p)\(model.streamConnected ? "" : ", reconnecting")")
                         .font(Theme.body(11))
                         .foregroundStyle(Theme.dim)
+                    TimelineView(.periodic(from: .now, by: 5)) { _ in
+                        if model.dataIsStale {
+                            Text(model.lastData.map { d in "No new prices since " + d.formatted(date: .omitted, time: .shortened) }
+                                 ?? "No prices yet")
+                                .font(Theme.title(11))
+                                .foregroundStyle(Theme.coral)
+                        } else if let d = model.lastData {
+                            Text("Updated " + d.formatted(date: .omitted, time: .standard))
+                                .font(Theme.body(11))
+                                .foregroundStyle(Theme.faint)
+                        }
+                    }
                 }
             }
             Spacer(minLength: 0)

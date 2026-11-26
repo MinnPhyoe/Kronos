@@ -106,6 +106,28 @@ struct SettingsView: View {
             }
             Section("Alerts") {
                 Toggle("Mac notifications for setups, triggers, TP and SL, and news", isOn: $draft.notifications)
+                Picker("Alert me for", selection: $draft.alertMinGrade) {
+                    Text("A+ setups only").tag("A+")
+                    Text("A and A+").tag("A")
+                    Text("Every signal that passes (B and up)").tag("B")
+                }
+                Text("A+ setups are rare by design: on many days there are none. A grade is how strong the evidence is, not a promise.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Keep this Mac awake while FX Desk runs", isOn: $draft.keepAwake)
+                Text("Alerts need the Mac on and FX Desk running. Closing the window keeps it running in the menu bar; the screen can still turn off.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Notifications on my phone") {
+                HStack {
+                    TextField("ntfy topic", text: $draft.ntfyTopic, prompt: Text("off"))
+                    Button("Make a private topic") { draft.ntfyTopic = "fxdesk-" + randomTopic() }
+                    Button("Send a test") { Task { await model.sendTestPush(topic: draft.ntfyTopic) } }
+                        .disabled(draft.ntfyTopic.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Text("1. Install the free ntfy app on your iPhone. 2. Press Make a private topic, then Save. 3. In ntfy, tap + and subscribe to the same topic. 4. Press Send a test. Alerts then reach your phone even away from home, as long as this Mac is on.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Alerts pass through ntfy.sh's free server. Anyone who knows the topic name can read them, so keep it long and private. They hold the pair, side and levels, never your password or account.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Spacer()
@@ -137,6 +159,10 @@ struct SettingsView: View {
             return model.hasPhonePassword ? nil : "Choose a password for the phone, then press Save."
         }
         return AppSettings.phonePasswordProblem(phonePassword)
+    }
+
+    private func randomTopic() -> String {
+        (0..<16).map { _ in String("abcdefghijkmnpqrstuvwxyz23456789".randomElement()!) }.joined()
     }
 
     private func chooseFolder() {

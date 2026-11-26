@@ -33,6 +33,27 @@ from .sessions import windows_for
 log = logging.getLogger(__name__)
 
 
+GRADE_ORDER = {"A+": 3, "A": 2, "B": 1}
+
+
+def grade_ok(sig: dict, min_grade: str) -> bool:
+    """Alert only for signals at or above the chosen grade (A+, A or B)."""
+    g = (sig.get("grade") or {}).get("grade")
+    return GRADE_ORDER.get(g or "", 0) >= GRADE_ORDER.get((min_grade or "B").upper(), 1)
+
+
+def grade_tag(sig: dict) -> str:
+    g = (sig.get("grade") or {}).get("grade")
+    return (g + " · ") if g else ""
+
+
+def alert_data(sig: dict) -> dict:
+    return {"signal_id": sig["id"], "pair": sig["pair"], "side": sig["side"],
+            "grade": (sig.get("grade") or {}).get("grade"), "entry": sig.get("entry"), "sl": sig.get("sl"),
+            "tp1": sig.get("tp1")}
+
+
+
 @dataclass
 class Setup:
     rng: OpeningRange
@@ -253,16 +274,16 @@ class StrategyService:
             self.done.add(rng.key)
             self.setups.pop(rng.key, None)
             self.tracked[sig["id"]] = sig
-            if sig["passed"]:
-                await self.alerter.send("trig:" + sig["id"], "triggered", "%s %s triggered" % (sig["pair"], sig["side"]),
-                                        "%s: entry %s, SL %s, TP1 %s. Confidence %s. Your call: nothing was placed."
+            if sig["passed"] and grade_ok(sig, self.cfg.alert_min_grade):
+                await self.alerter.send("trig:" + sig["id"], "triggered", "%s%s %s triggered" % (grade_tag(sig), sig["pair"], sig["side"].upper()),
+                                        "%s: entry %s, SL %s, TP1 %s. Time Machine %s target first. Your call: nothing was placed."
                                         % (sig["setup"], sig["entry"], sig["sl"], sig["tp1"],
-                                           _pct(sig["kronos_confidence"])), {"signal_id": sig["id"]}, "high")
-        elif sig["passed"]:
-            await self.alerter.send("wait:" + sig["id"], "setup", "%s setup: %s" % (sig["pair"], sig["setup"]),
+                                           _pct(sig["timemachine_odds"])), alert_data(sig), "high")
+        elif sig["passed"] and grade_ok(sig, self.cfg.alert_min_grade):
+            await self.alerter.send("wait:" + sig["id"], "setup", "%s%s setup: %s" % (grade_tag(sig), sig["pair"], sig["setup"]),
                                     "Waiting for a 5m close %s %s." % ("above" if sig["side"] == "buy" else "below",
                                                                        rng.high if sig["side"] == "buy" else rng.low),
-                                    {"signal_id": sig["id"]})
+                                    alert_data(sig))
         if sig["passed"] and self.explainer is not None:
             asyncio.create_task(self._explain(sig["id"]))
 

@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     @Published var analysing = false
     @Published var lastPrice: Double?
     @Published var prices: [String: Double] = [:]
+    @Published var lastData: Date?                 // the last tick or candle from the engine
     @Published var signals: [String: Signal] = [:]
     @Published var scan: [ScanItem] = []
     @Published var alerts: [AlertItem] = []
@@ -56,6 +57,8 @@ final class AppModel: ObservableObject {
     private var booted = false
     private var sessionWindows: [SessionWindow] = []
     private var priceStamps: [String: Date] = [:]
+    private var streamWasUp = false
+    private var awakeToken: NSObjectProtocol?
 
     private init() {
         api = APIClient(baseURL: AppSettings.load().baseURL)
@@ -122,7 +125,9 @@ final class AppModel: ObservableObject {
         stream.stop()
         engine.stop()
         streamConnected = false
+        streamWasUp = false
         engineState = .stopped
+        updateKeepAwake()
     }
 
     func restartEngine() {
@@ -161,15 +166,73 @@ final class AppModel: ObservableObject {
         stream.start(url: api.streamURL, onMessage: { [weak self] m in
             self?.handle(m)
         }, onState: { [weak self] up in
-            self?.streamConnected = up
+            guard let self else { return }
+            self.streamConnected = up
+            // back after a dropped connection: fetch what was sent while it was down
+            if up && self.streamWasUp { Task { await self.refreshAll() } }
+            if up { self.streamWasUp = true }
         })
+        updateKeepAwake()
         Task { await healthLoop() }
     }
 
     private func healthLoop() async {
+        var round = 0
         while engineState == .running {
             health = try? await api.health()
+            round += 1
+            if round % 4 == 0 {                    // every minute, in case a stream message was missed
+                await refreshSignals()
+                scan = (try? await api.scan()) ?? scan
+            }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
+        }
+        updateKeepAwake()                          // the engine stopped or failed: let the Mac sleep again
+    }
+
+    /// True when the market is open but no price has arrived for 3 minutes.
+    var dataIsStale: Bool {
+        guard engineState == .running, AppModel.marketOpen(Date()) else { return false }
+        guard let d = lastData else { return true }
+        return Date().timeIntervalSince(d) > 180
+    }
+
+    /// Forex trades from Sunday 22:00 to Friday 22:00 UTC (it shifts an hour with US summer time).
+    nonisolated static func marketOpen(_ now: Date) -> Bool {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let wd = cal.component(.weekday, from: now)      // 1 = Sunday, 7 = Saturday
+        let h = cal.component(.hour, from: now)
+        return !(wd == 7 || (wd == 1 && h < 22) || (wd == 6 && h >= 22))
+    }
+
+    /// Stop the Mac from sleeping while the engine runs, so alerts keep coming (the screen can still sleep).
+    func updateKeepAwake() {
+        let want = settings.keepAwake && engineState == .running
+        if want && awakeToken == nil {
+            awakeToken = ProcessInfo.processInfo.beginActivity(options: [.idleSystemSleepDisabled],
+                                                               reason: "FX Desk is watching the markets for alerts")
+        } else if !want, let t = awakeToken {
+            ProcessInfo.processInfo.endActivity(t)
+            awakeToken = nil
+        }
+    }
+
+    /// Send one test notification to the phone through ntfy.
+    func sendTestPush(topic: String) async {
+        let t = topic.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, let url = URL(string: "https://ntfy.sh/" + t) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("FX Desk", forHTTPHeaderField: "Title")
+        req.httpBody = Data("Test from FX Desk: phone notifications work.".utf8)
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            message = code == 200 ? "Test sent. It should appear on your phone in a few seconds."
+                : "ntfy answered \(code). Check the topic name."
+        } catch {
+            message = "Could not reach ntfy: \(error.localizedDescription)"
         }
     }
 
@@ -269,6 +332,7 @@ final class AppModel: ObservableObject {
         case "tick":
             if let p = m.pair, let bid = m.bid {
                 let now = Date()
+                if now.timeIntervalSince(lastData ?? .distantPast) > 1 { lastData = now }
                 if now.timeIntervalSince(priceStamps[p] ?? .distantPast) > 0.5 {
                     priceStamps[p] = now
                     prices[p] = bid
@@ -278,6 +342,7 @@ final class AppModel: ObservableObject {
             lastPrice = bid
             chart.tick(time: t, price: bid, tfSeconds: timeframe.seconds)
         case "candle":
+            lastData = Date()
             guard m.pair == pair, m.tf == timeframe.rawValue, m.closed == true, let c = m.candle else { return }
             let candle = Candle(time: c.openTime, open: c.open, high: c.high, low: c.low, close: c.close)
             if let i = candles.lastIndex(where: { $0.time == candle.time }) { candles[i] = candle } else { candles.append(candle) }
@@ -318,6 +383,7 @@ final class AppModel: ObservableObject {
             || new.oandaAccount != settings.oandaAccount || !(oandaToken ?? "").isEmpty
             || new.phoneAccess != settings.phoneAccess || !(phonePassword ?? "").isEmpty
             || new.kronosMustAgree != settings.kronosMustAgree
+            || new.alertMinGrade != settings.alertMinGrade || new.ntfyTopic != settings.ntfyTopic
         settings = new
         new.save()
         writeEngineEnv(new, oandaToken: oandaToken, phonePassword: phonePassword)
@@ -329,6 +395,7 @@ final class AppModel: ObservableObject {
             Task { try? await api.putSettings(new.engineAccount) }
         }
         message = engineChanged ? "Saved. Restarting the engine with the new settings." : "Saved."
+        updateKeepAwake()
     }
 
     /// Merge the settings into the engine's private .env (only you can read it); other keys, like tokens, are kept.

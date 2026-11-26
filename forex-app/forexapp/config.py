@@ -114,6 +114,7 @@ class Config:
     max_context: int = 512
     lookback: int = 240                      # closed candles; 480 pulled forecasts hard toward the input's average
     kronos_gate: bool = False                # Kronos must agree before a signal shows; off: advice only
+    alert_min_grade: str = "B"               # alert for signals of this grade or better: A+, A or B
     horizon: int = 24                        # candles ahead (2 hours on 5m)
     paths: int = 30                          # forecast paths, kept separately (never averaged)
     temperature: float = 1.0
@@ -212,6 +213,7 @@ class Config:
         c.tp2_cap_r = _env_float("FOREX_TP2_CAP_R", c.tp2_cap_r)
         c.min_confidence = _env_float("FOREX_MIN_CONFIDENCE", c.min_confidence)
         c.kronos_gate = _env_bool("FOREX_KRONOS_GATE", c.kronos_gate)
+        c.alert_min_grade = _env("FOREX_ALERT_MIN_GRADE", c.alert_min_grade).upper()
         c.min_expectancy_r = _env_float("FOREX_MIN_EXPECTANCY_R", c.min_expectancy_r)
         c.slippage_pips = _env_float("FOREX_SLIPPAGE_PIPS", c.slippage_pips)
         c.commission_per_lot = _env_float("FOREX_COMMISSION_PER_LOT", c.commission_per_lot)
