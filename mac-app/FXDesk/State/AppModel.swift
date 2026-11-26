@@ -85,11 +85,21 @@ final class AppModel: ObservableObject {
     }
 
     func connectOrStart() async {
-        if (try? await api.health()) != nil {
-            await engineIsUp()
+        if let h = try? await api.health() {
+            if AppModel.isFXDeskEngine(h) {
+                await engineIsUp()
+            } else {
+                engineState = .failed("Another program is using port \(settings.port), so FX Desk can't start its engine. "
+                                      + "Quit it (in Terminal: kill $(lsof -t -iTCP:\(settings.port) -sTCP:LISTEN)), then press Start.")
+            }
             return
         }
         startEngine()
+    }
+
+    /// FX Desk's engine reports its price source in /health; another program on the same port does not.
+    nonisolated static func isFXDeskEngine(_ h: Health) -> Bool {
+        h.config?.provider != nil
     }
 
     func startEngine() {

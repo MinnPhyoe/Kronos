@@ -178,3 +178,12 @@ final class AlertSettingsTests: XCTestCase {
         XCTAssertFalse(AppModel.marketOpen(f.date(from: "2026-11-27T22:30:00Z")!))   // Friday after 22:00
     }
 }
+
+final class EngineIdentityTests: XCTestCase {
+    func testAnotherProgramOnThePortIsNotTakenForTheEngine() throws {
+        let ours = try EngineJSON.decoder.decode(Health.self, from: Data(#"{"feed_up":true,"config":{"provider":"yahoo"}}"#.utf8))
+        let other = try EngineJSON.decoder.decode(Health.self, from: Data(#"{"ok":true,"model":"Kronos-small"}"#.utf8))
+        XCTAssertTrue(AppModel.isFXDeskEngine(ours))
+        XCTAssertFalse(AppModel.isFXDeskEngine(other))
+    }
+}
